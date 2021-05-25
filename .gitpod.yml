@@ -1,17 +1,31 @@
+image:
+  file: .gitpod.Dockerfile
+
 # List the ports you want to expose and what to do when they are served. See https://www.gitpod.io/docs/config-ports/
 ports:
-    - port: 3030
-      onOpen: open-preview
+  - port: 3030
+    onOpen: ignore
+
+  - port: 3306
+    onOpen: ignore
+
+  - port: 8090
+    onOpen: ignore
 
 # List the start up tasks. You can start them in parallel in multiple terminals. See https://www.gitpod.io/docs/config-start-tasks/
 tasks:
-    - init: sudo apt update -y && sudo apt install apt-utils tmux nodejs npm mysql-client -y
-    - init: npm install --global yarn
-    - init: docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7
-    - init: git clone https://github.com/owid/owid-content
-    - init: wget https://files.ourworldindata.org/owid_metadata.sql.gz && gunzip owid_metadata.sql.gz && ./db/downloadAndCreateDatabase.sh
-    - init: cp .env.example .env
-    - before: yarn
-    - command: yarn startTscServer
-    - command: yarn startAdminServer
-    - command: yarn startWebpackServer
+
+  - init: >
+        sudo apt update -y &&
+        sudo apt install apt-utils tmux nodejs npm mysql-client -y &&
+        npm install -global yarn &&
+        docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7 &&  git clone https://github.com/owid/owid-content &&
+        wget https://files.ourworldindata.org/owid_metadata.sql.gz &&
+        gunzip owid_metadata.sql.gz &&
+        ./db/downloadAndCreateDatabase.sh &&
+        cp .env.example .env &&
+        yarn
+  - before: python rewritegitpodurl.py && docker start mysql-server
+  - command: yarn startTscServer
+  - command: yarn startAdminServer
+  - command: yarn startWebpackServer

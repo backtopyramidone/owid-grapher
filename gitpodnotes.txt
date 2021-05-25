@@ -1,0 +1,16 @@
+sudo apt update -y
+docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7
+sudo apt install apt-utils tmux -y
+sudo apt install nodejs npm -y
+npm install --global yarn
+git clone https://github.com/owid/owid-content
+yarn
+wget https://files.ourworldindata.org/owid_metadata.sql.gz
+gunzip owid_metadata.sql.gz
+./db/downloadAndCreateDatabase.sh
+cp .env.example .env
+yarn startTmuxServer
+
+
+need to set WEBPACK_DEV_URL to 8090 - https://8090- + GITPOD_WORKSPACE_URL
+need to set BAKED_BASE_URL to 3030 - https://3030- + GITPOD_WORKSPACE_URL

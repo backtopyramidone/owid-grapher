@@ -45,11 +45,6 @@ export const IndexPage = (props: {
                     type="text/javascript"
                     dangerouslySetInnerHTML={{ __html: script }}
                 />
-                {/* This lets the public frontend know to show edit links and such */}
-                <iframe
-                    src="https://ourworldindata.org/identifyadmin"
-                    style={{ display: "none" }}
-                />
             </body>
         </html>
     )

@@ -25,3 +25,7 @@ public/covidChartAndVariableMeta.json
 clientSettings.json
 serverSettings.json
 localBake/
+owid_metadata.sql
+.vscode/
+owid-content/
+
