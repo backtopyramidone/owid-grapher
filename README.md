@@ -1,12 +1,15 @@
-# owid-grapher
+# Gitpodified owid-grapher
 
-#### Gitpod Information
 
-This is a fork of the owid-grapher project that has limited support for [Gitpod](https://gitpod.io). It isn't ready to be submitted as a pull request to the main project due to code quality and source modifications.
+This is a fork of the owid-grapher project that has limited support for [Gitpod](https://gitpod.io). The scripts contained in this project run owid-admin, making it possible to import datasets and edit visualizations. It isn't quite ready to be submitted as a pull request to the main project due to code quality and source modifications.
 
-#### Directions
+#### Great, how do I use it?
 
 As soon as the Gitpod workspace is launched, it will begin installing all of the dependencies. Once it is finished, a development server will automatically start. To access it, Ctrl/Command + click on the link located in the terminal. The default user account is `admin@example.com` with a password of `admin`.
+
+#### Can I integrate this into a website?
+
+No, not at the moment. Gitpod is designed for software development, and only stays online for as long as your workspace is open. However, it is possible to export a graph as an .svg file and embed it into a website with lossless quaity.
 
 
 [![Actions Status](https://github.com/owid/owid-grapher/workflows/Continuous%20Integration/badge.svg)](https://github.com/owid/owid-grapher/actions)

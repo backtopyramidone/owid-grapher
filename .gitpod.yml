@@ -5,12 +5,15 @@ image:
 ports:
   - port: 3030
     onOpen: ignore
+    visibility: private
 
   - port: 3306
     onOpen: ignore
+    visibility: private
 
   - port: 8090
     onOpen: ignore
+    visibility: private
 
 # List the start up tasks. You can start them in parallel in multiple terminals. See https://www.gitpod.io/docs/config-start-tasks/
 tasks:
@@ -28,7 +31,7 @@ tasks:
         chmod +x initdone.sh &&
         touch initdone &&
         exit
-
+  - command: ./initdone.sh && cat urlgitpod.txt
   - command: ./initdone.sh && docker start mysql-server && yarn startTscServer
   - command: ./initdone.sh && sleep 5 && yarn startAdminServer
   - command: ./initdone.sh && yarn startWebpackServer
