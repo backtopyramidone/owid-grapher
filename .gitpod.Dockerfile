@@ -2,7 +2,10 @@ FROM gitpod/workspace-full
 
 USER gitpod
 
-RUN apt update -y && apt install apt-utils tmux nodejs npm mysql-client -y && npm install -global yarn
+RUN sudo apt-get update -q && \
+    sudo apt-get install apt-utils tmux nodejs npm mysql-client -yq && \
+    npm install -global yarn
+
 # Install custom tools, runtime, etc. using apt-get
 # For example, the command below would install "bastet" - a command line tetris clone:
 #
