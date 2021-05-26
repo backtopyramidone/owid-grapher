@@ -21,7 +21,6 @@ public/head.txt
 public/covidChartAndVariableMeta.json
 .storybook/build
 *tempDeployScript.*
-.env
 clientSettings.json
 serverSettings.json
 localBake/
