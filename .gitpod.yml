@@ -17,9 +17,10 @@ tasks:
   - before : python rewriteurlgitpod.py
     init: >
         docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7 && git clone https://github.com/owid/owid-content &&
-        wget https://files.ourworldindata.org/owid_metadata.sql.gz &&
-        gunzip owid_metadata.sql.gz &&
-        sleep 5 &&
+        wget -O owid_metadata.sql.gz "https://files.ourworldindata.org/owid_metadata.sql.gz" &&
+        gunzip -f owid_metadata.sql.gz &&
+        echo "sleeping 25 seconds for mysql server to come up" &&
+        sleep 25 &&
         ./db/downloadAndCreateDatabase.sh &&
         cp .env.example .env &&
         yarn &&
