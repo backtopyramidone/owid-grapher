@@ -28,4 +28,6 @@ localBake/
 owid_metadata.sql
 .vscode/
 owid-content/
-
+initdone
+.theia/
+owid_metadata_sql.gz
