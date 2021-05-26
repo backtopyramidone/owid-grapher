@@ -30,3 +30,4 @@ owid-content/
 initdone
 .theia/
 owid_metadata_sql.gz
+.env

@@ -1,5 +1,14 @@
 # owid-grapher
 
+#### Gitpod Information
+
+This is a fork of the owid-grapher project that has limited support for [Gitpod](https://gitpod.io). It isn't ready to be submitted as a pull request to the main project due to code quality and source modifications.
+
+#### Directions
+
+As soon as the Gitpod workspace is launched, it will begin installing all of the dependencies. Once it is finished, a development server will automatically start. To access it, Ctrl/Command + click on the link located in the terminal. The default user account is `admin@example.com` with a password of `admin`.
+
+
 [![Actions Status](https://github.com/owid/owid-grapher/workflows/Continuous%20Integration/badge.svg)](https://github.com/owid/owid-grapher/actions)
 [![Test coverage](https://owid.github.io/badges/coverage.svg)](https://owid.github.io/coverage/)
 [![Storybook](https://raw.githubusercontent.com/storybookjs/brand/master/badge/badge-storybook.svg)](https://owid.github.io/stories/)
