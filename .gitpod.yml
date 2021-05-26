@@ -30,8 +30,10 @@ tasks:
         tsc -b -verbose &&
         chmod +x initdone.sh &&
         touch initdone &&
+        cat urlgitpod.txt &&
+        sleep 10 &&
         exit
-  - command: ./initdone.sh && cat urlgitpod.txt
-  - command: ./initdone.sh && docker start mysql-server && yarn startTscServer
+  - command: ./initdone.sh && docker start mysql-server && cat urlgitpod.txt && yarn startTscServer
   - command: ./initdone.sh && sleep 5 && yarn startAdminServer
   - command: ./initdone.sh && yarn startWebpackServer
+  - command: ./initdone.sh && cat urlgitpod.txt

@@ -1,11 +1,12 @@
 # Gitpodified owid-grapher
 
+[Launch Workspace](https://gitpod.io/#https://github.com/backtopyramidone/owid-grapher)
 
 This is a fork of the owid-grapher project that has limited support for [Gitpod](https://gitpod.io). The scripts contained in this project run owid-admin, making it possible to import datasets and edit visualizations. It isn't quite ready to be submitted as a pull request to the main project due to code quality and source modifications.
 
 #### Great, how do I use it?
 
-As soon as the Gitpod workspace is launched, it will begin installing all of the dependencies. Once it is finished, a development server will automatically start. To access it, Ctrl/Command + click on the link located in the terminal. The default user account is `admin@example.com` with a password of `admin`.
+As soon as the Gitpod workspace is launched, it will begin installing all of the dependencies. Multiple terminals will open at the same time. The database setup takes ~10 minutes on first start, view the leftmost terminal tab to see the logs. After it is finished, a link to the development server will appear in the rightmost terminal. To access it, Ctrl/Command + click on the link located in the terminal. The default user account is `admin@example.com` with a password of `admin`.
 
 #### Can I integrate this into a website?
 
