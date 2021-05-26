@@ -14,15 +14,17 @@ ports:
 
 # List the start up tasks. You can start them in parallel in multiple terminals. See https://www.gitpod.io/docs/config-start-tasks/
 tasks:
-
-  - init: >
+  - before : python rewriteurlgitpod.py
+    init: >
         docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7 && git clone https://github.com/owid/owid-content &&
         wget https://files.ourworldindata.org/owid_metadata.sql.gz &&
         gunzip owid_metadata.sql.gz &&
+        sleep 5 &&
         ./db/downloadAndCreateDatabase.sh &&
         cp .env.example .env &&
-        yarn
-    before: python rewriteurlgitpod.py && docker start mysql-server
-  - command: yarn startTscServer
+        yarn &&
+        tsc -b -verbose
+
+  - command: docker start mysql-server && yarn startTscServer
   - command: yarn startAdminServer
   - command: yarn startWebpackServer
