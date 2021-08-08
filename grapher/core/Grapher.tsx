@@ -20,7 +20,6 @@ import {
     lowerCaseFirstLetterUnlessAbbreviation,
     isMobile,
     isVisible,
-    VNode,
     throttle,
     next,
     sampleFrom,
@@ -39,7 +38,6 @@ import {
     GrapherTabOption,
     ScaleType,
     StackMode,
-    DimensionProperty,
     EntitySelectionMode,
     HighlightToggleConfig,
     ScatterPointLabelStrategy,
@@ -49,11 +47,9 @@ import {
     FacetStrategy,
     ThereWasAProblemLoadingThisChart,
     SeriesColorMap,
+    FacetAxisDomain,
 } from "../core/GrapherConstants"
-import {
-    LegacyChartDimensionInterface,
-    LegacyVariablesAndEntityKey,
-} from "./LegacyVariableCode"
+import { LegacyVariablesAndEntityKey } from "./LegacyVariableCode"
 import * as Cookies from "js-cookie"
 import {
     ChartDimension,
@@ -99,17 +95,14 @@ import {
     deleteRuntimeAndUnchangedProps,
     updatePersistables,
 } from "../persistable/Persistable"
-import {
-    ColumnSlug,
-    ColumnSlugs,
-    Time,
-} from "../../coreTable/CoreTableConstants"
+import { ColumnSlugs, Time } from "../../coreTable/CoreTableConstants"
 import { isOnTheMap } from "../mapCharts/EntitiesOnTheMap"
 import { ChartManager } from "../chart/ChartManager"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faExclamationTriangle } from "@fortawesome/free-solid-svg-icons/faExclamationTriangle"
 import {
     AbsRelToggleManager,
+    FacetStrategyDropdownManager,
     FooterControls,
     FooterControlsManager,
     HighlightToggleManager,
@@ -162,8 +155,19 @@ import {
 } from "../../settings/clientSettings"
 import { legacyToCurrentGrapherQueryParams } from "./GrapherUrlMigrations"
 import { Url } from "../../clientUtils/urls/Url"
+import {
+    Annotation,
+    ColumnSlug,
+    DimensionProperty,
+    SortBy,
+    SortConfig,
+    SortOrder,
+} from "../../clientUtils/owidTypes"
 import { ColumnTypeMap, CoreColumn } from "../../coreTable/CoreTableColumns"
 import { ChartInterface } from "../chart/ChartInterface"
+import { LegacyChartDimensionInterface } from "../../clientUtils/LegacyVariableDisplayConfigInterface"
+import { AxisConfigInterface } from "../axis/AxisConfigInterface"
+import Bugsnag from "@bugsnag/js"
 
 declare const window: any
 
@@ -232,6 +236,7 @@ export class Grapher
         FooterControlsManager,
         DataTableManager,
         ScatterPlotManager,
+        FacetStrategyDropdownManager,
         MapChartManager {
     @observable.ref type = ChartTypeName.LineChart
     @observable.ref id?: number = undefined
@@ -295,6 +300,16 @@ export class Grapher
     @observable excludedEntities?: number[] = undefined
     @observable comparisonLines: ComparisonLineConfig[] = [] // todo: Persistables?
     @observable relatedQuestions: RelatedQuestionsConfig[] = [] // todo: Persistables?
+    @observable.ref annotation?: Annotation = undefined
+
+    @observable hideFacetControl?: boolean = true
+
+    // the desired faceting strategy, which might not be possible if we change the data
+    @observable selectedFacetStrategy?: FacetStrategy = undefined
+
+    @observable sortBy?: SortBy
+    @observable sortOrder?: SortOrder
+    @observable sortColumnSlug?: string
 
     owidDataset?: LegacyVariablesAndEntityKey = undefined // This is temporarily used for testing. Will be removed
     manuallyProvideData? = false // This will be removed.
@@ -359,7 +374,7 @@ export class Grapher
 
         if (this.isEditor) this.ensureValidConfigWhenEditing()
 
-        if (getGrapherInstance) getGrapherInstance(this)
+        if (getGrapherInstance) getGrapherInstance(this) // todo: possibly replace with more idiomatic ref
 
         this.checkVisibility = throttle(this.checkVisibility, 400)
     }
@@ -475,6 +490,14 @@ export class Grapher
 
         if (this.addCountryMode !== EntitySelectionMode.Disabled && selection)
             this.selection.setSelectedEntities(selection)
+
+        // faceting
+        if (params.facet && params.facet in FacetStrategy) {
+            this.selectedFacetStrategy = params.facet as FacetStrategy
+        }
+        if (params.uniformYAxis === "0") {
+            this.yAxis.facetDomain = FacetAxisDomain.independent
+        }
     }
 
     @action.bound private setTimeFromTimeQueryParam(time: string): void {
@@ -489,6 +512,14 @@ export class Grapher
 
     @computed private get isOnMapTab(): boolean {
         return this.tab === GrapherTabOption.map
+    }
+
+    @computed get yAxisConfig(): Readonly<AxisConfigInterface> {
+        return this.yAxis.toObject()
+    }
+
+    @computed get xAxisConfig(): Readonly<AxisConfigInterface> {
+        return this.xAxis.toObject()
     }
 
     @computed get tableForSelection(): OwidTable {
@@ -1098,7 +1129,7 @@ export class Grapher
         // we don't have more than one distinct time point in our data, so it doesn't make sense to show a timeline
         if (this.times.length <= 1) return false
 
-        switch (this.tab) {
+        switch (this.currentTab) {
             // the map tab has its own `hideTimeline` option
             case GrapherTabOption.map:
                 return !this.map.hideTimeline
@@ -1159,7 +1190,7 @@ export class Grapher
             .map((dim) => dim.column)
     }
 
-    @computed get yColumnSlugsInSelectionOrder() {
+    @computed get yColumnSlugsInSelectionOrder(): string[] {
         return this.selectedColumnSlugs?.length
             ? this.selectedColumnSlugs
             : this.yColumnSlugs
@@ -1407,9 +1438,13 @@ export class Grapher
     }
 
     get staticSVG(): string {
-        return ReactDOMServer.renderToStaticMarkup(
+        const _isExportingtoSvgOrPng = this.isExportingtoSvgOrPng
+        this.isExportingtoSvgOrPng = true
+        const staticSvg = ReactDOMServer.renderToStaticMarkup(
             <StaticCaptionedChart manager={this} bounds={this.idealBounds} />
         )
+        this.isExportingtoSvgOrPng = _isExportingtoSvgOrPng
+        return staticSvg
     }
 
     @computed get mapConfig(): MapConfig {
@@ -1447,6 +1482,9 @@ export class Grapher
                 !this.areHandlesOnSameTime &&
                 this.yScaleType !== ScaleType.log
             )
+
+        if (this.facetStrategy === FacetStrategy.metric) return false
+
         return !this.hideRelativeToggle
     }
 
@@ -1460,13 +1498,27 @@ export class Grapher
     static renderGrapherIntoContainer(
         config: GrapherProgrammaticInterface,
         containerNode: Element
-    ): void {
+    ): Grapher | null {
+        const grapherInstanceRef = React.createRef<Grapher>()
+
+        let ErrorBoundary = React.Fragment // use React.Fragment as a sort of default error boundary if Bugsnag is not available
+        if (Bugsnag && (Bugsnag as any)._client) {
+            ErrorBoundary = Bugsnag.getPlugin("react").createErrorBoundary(
+                React
+            )
+        }
+
         const setBoundsFromContainerAndRender = (): void => {
             const props: GrapherProgrammaticInterface = {
                 ...config,
                 bounds: Bounds.fromRect(containerNode.getBoundingClientRect()),
             }
-            ReactDOM.render(<Grapher {...props} />, containerNode)
+            ReactDOM.render(
+                <ErrorBoundary>
+                    <Grapher ref={grapherInstanceRef} {...props} />
+                </ErrorBoundary>,
+                containerNode
+            )
         }
 
         setBoundsFromContainerAndRender()
@@ -1474,6 +1526,7 @@ export class Grapher
             "resize",
             throttle(setBoundsFromContainerAndRender, 400)
         )
+        return grapherInstanceRef.current
     }
 
     static renderSingleGrapherOnGrapherPage(
@@ -1580,7 +1633,7 @@ export class Grapher
             : bounds.padBottom(this.footerControlsHeight)
     }
 
-    @observable.ref private popups: VNode[] = []
+    @observable.ref private popups: JSX.Element[] = []
 
     base: React.RefObject<HTMLDivElement> = React.createRef()
 
@@ -1600,11 +1653,11 @@ export class Grapher
     }
 
     // todo: clean up this popup stuff
-    addPopup(vnode: VNode): void {
+    addPopup(vnode: JSX.Element): void {
         this.popups = this.popups.concat([vnode])
     }
 
-    removePopup(vnodeType: any): void {
+    removePopup(vnodeType: JSX.Element): void {
         this.popups = this.popups.filter((d) => !(d.type === vnodeType))
     }
 
@@ -1718,7 +1771,7 @@ export class Grapher
             },
             {
                 combo: "f",
-                fn: (): void => this.toggleFacetStrategy(),
+                fn: (): void => this.toggleFacetControlVisibility(),
                 title: `Toggle Faceting`,
                 category: "Chart",
             },
@@ -1787,10 +1840,43 @@ export class Grapher
     }
 
     @action.bound private toggleFacetStrategy(): void {
-        this.facet = next(this.availableFacetStrategies, this.facet)
+        this.facetStrategy = next(
+            this.availableFacetStrategies,
+            this.facetStrategy
+        )
     }
 
-    @observable facet?: FacetStrategy
+    @action.bound private toggleFacetControlVisibility(): void {
+        this.hideFacetControl = !this.hideFacetControl
+    }
+
+    @computed get showFacetYDomainToggle(): boolean {
+        // don't offer to make the y range relative if the range is discrete
+        return (
+            this.facetStrategy !== FacetStrategy.none &&
+            !this.isStackedDiscreteBar
+        )
+    }
+
+    @computed get _sortConfig(): Readonly<SortConfig> {
+        return {
+            sortBy: this.sortBy ?? SortBy.total,
+            sortOrder: this.sortOrder ?? SortOrder.desc,
+            sortColumnSlug: this.sortColumnSlug,
+        }
+    }
+
+    @computed get sortConfig(): SortConfig {
+        const sortConfig = { ...this._sortConfig }
+        // In relative mode, where the values for every entity sum up to 100%, sorting by total
+        // doesn't make sense. It's also jumpy because of some rounding errors. For this reason,
+        // we sort by entity name instead.
+        if (this.isRelativeMode && sortConfig.sortBy === SortBy.total) {
+            sortConfig.sortBy = SortBy.entityName
+            sortConfig.sortOrder = SortOrder.asc
+        }
+        return sortConfig
+    }
 
     @computed private get hasMultipleYColumns(): boolean {
         return this.yColumnSlugs.length > 1
@@ -1817,33 +1903,38 @@ export class Grapher
         return []
     }
 
-    @computed private get availableFacetStrategies(): (
-        | FacetStrategy
-        | undefined
-    )[] {
-        const strategies: (FacetStrategy | undefined)[] = [undefined]
+    @computed get availableFacetStrategies(): FacetStrategy[] {
+        const strategies: FacetStrategy[] = [FacetStrategy.none]
 
-        if (this.hasMultipleYColumns) strategies.push(FacetStrategy.column)
+        if (this.hasMultipleYColumns) {
+            strategies.push(FacetStrategy.metric)
+        }
 
-        if (this.selection.numSelectedEntities > 1)
-            strategies.push(FacetStrategy.country)
+        if (this.selection.numSelectedEntities > 1) {
+            strategies.push(FacetStrategy.entity)
+        }
 
         return strategies
     }
 
     private disableAutoFaceting = true // turned off for now
-    @computed get facetStrategy(): FacetStrategy | undefined {
-        if (this.facet && this.availableFacetStrategies.includes(this.facet))
-            return this.facet
 
-        if (this.disableAutoFaceting) return undefined
+    // the actual facet setting used by a chart, potentially overriding selectedFacetStrategy
+    @computed get facetStrategy(): FacetStrategy {
+        if (
+            this.selectedFacetStrategy &&
+            this.availableFacetStrategies.includes(this.selectedFacetStrategy)
+        )
+            return this.selectedFacetStrategy
+
+        if (this.disableAutoFaceting) return FacetStrategy.none
 
         // Auto facet on SingleEntity charts with multiple selected entities
         if (
             this.addCountryMode === EntitySelectionMode.SingleEntity &&
             this.selection.numSelectedEntities > 1
         )
-            return FacetStrategy.country
+            return FacetStrategy.entity
 
         // Auto facet when multiple slugs and multiple entities selected. todo: not sure if this is correct.
         if (
@@ -1851,9 +1942,13 @@ export class Grapher
             this.hasMultipleYColumns &&
             this.selection.numSelectedEntities > 1
         )
-            return FacetStrategy.column
+            return FacetStrategy.metric
 
-        return undefined
+        return FacetStrategy.none
+    }
+
+    set facetStrategy(facet: FacetStrategy) {
+        this.selectedFacetStrategy = facet
     }
 
     @action.bound randomSelection(num: number): void {
@@ -1904,6 +1999,22 @@ export class Grapher
                 )}
             </div>
         )
+    }
+
+    @action.bound
+    resetAnnotation(): void {
+        this.renderAnnotation(undefined)
+    }
+
+    @action.bound
+    renderAnnotation(annotation: Annotation | undefined): void {
+        this.setAuthoredVersion(this.props)
+        this.reset()
+        this.updateFromObject({ ...this.props })
+        this.populateFromQueryParams(
+            legacyToCurrentGrapherQueryParams(this.props.queryStr ?? "")
+        )
+        this.annotation = annotation
     }
 
     render(): JSX.Element | undefined {
@@ -2088,11 +2199,14 @@ export class Grapher
         this.colorSlug = grapher.colorSlug
         this.sizeSlug = grapher.sizeSlug
         this.hasMapTab = grapher.hasMapTab
-        this.facet = undefined
+        this.selectedFacetStrategy = FacetStrategy.none
         this.hasChartTab = grapher.hasChartTab
         this.map = grapher.map
         this.yAxis.scaleType = grapher.yAxis.scaleType
         this.yAxis.min = grapher.yAxis.min
+        this.sortBy = grapher.sortBy
+        this.sortOrder = grapher.sortOrder
+        this.sortColumnSlug = grapher.sortColumnSlug
     }
 
     debounceMode = false
@@ -2108,6 +2222,9 @@ export class Grapher
         params.endpointsOnly = this.compareEndPointsOnly ? "1" : "0"
         params.time = this.timeParam
         params.region = this.map.projection
+        params.facet = this.selectedFacetStrategy
+        params.uniformYAxis =
+            this.yAxis.facetDomain === FacetAxisDomain.independent ? "0" : "1"
         return setSelectedEntityNamesParam(
             Url.fromQueryParams(params),
             this.selectedEntitiesIfDifferentThanAuthors
@@ -2320,7 +2437,7 @@ export class Grapher
             return true
         if (
             this.addCountryMode === EntitySelectionMode.SingleEntity &&
-            this.facetStrategy
+            this.facetStrategy !== FacetStrategy.none
         )
             return true
 
@@ -2339,6 +2456,7 @@ export class Grapher
     @computed get canChangeEntity(): boolean {
         return (
             !this.isScatter &&
+            !this.canSelectMultipleEntities &&
             this.addCountryMode === EntitySelectionMode.SingleEntity &&
             this.numSelectableEntityNames > 1
         )

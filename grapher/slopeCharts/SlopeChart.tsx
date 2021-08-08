@@ -8,7 +8,6 @@ import {
     sortBy,
     max,
     flatten,
-    SVGElement,
     getRelativeMouse,
     domainExtent,
     minBy,
@@ -50,6 +49,7 @@ import { OwidTable } from "../../coreTable/OwidTable"
 import { Color } from "../../coreTable/CoreTableConstants"
 import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
 import { ColorSchemeName } from "../color/ColorConstants"
+import { AxisConfig, FontSizeManager } from "../axis/AxisConfig"
 
 @observer
 export class SlopeChart
@@ -514,7 +514,7 @@ class SlopeChartAxis extends React.Component<SlopeAxisProps> {
 
 @observer
 class Slope extends React.Component<SlopeProps> {
-    line: SVGElement
+    line: SVGElement | null = null
 
     @computed get isInBackground() {
         const { isLayerMode, isHovered, isFocused } = this.props
@@ -633,9 +633,10 @@ class Slope extends React.Component<SlopeProps> {
 }
 
 @observer
-class LabelledSlopes extends React.Component<LabelledSlopesProps> {
+class LabelledSlopes
+    extends React.Component<LabelledSlopesProps>
+    implements FontSizeManager {
     base: React.RefObject<SVGGElement> = React.createRef()
-    svg: SVGElement
 
     @computed private get data() {
         return this.props.seriesArr
@@ -651,6 +652,10 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
 
     @computed private get bounds() {
         return this.props.bounds
+    }
+
+    @computed get fontSize() {
+        return this.manager.baseFontSize ?? BASE_FONT_SIZE
     }
 
     @computed private get focusedSeriesNames() {
@@ -691,8 +696,12 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
         )
     }
 
+    @computed private get yAxisConfig(): AxisConfig {
+        return new AxisConfig(this.manager.yAxisConfig, this)
+    }
+
     @computed private get yScaleType() {
-        return this.manager.yAxis?.scaleType || ScaleType.linear
+        return this.yAxisConfig.scaleType || ScaleType.linear
     }
 
     @computed private get yDomainDefault(): [number, number] {
@@ -707,7 +716,7 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
     }
 
     @computed private get yDomain(): [number, number] {
-        const domain = this.manager.yAxis?.domain || [Infinity, -Infinity]
+        const domain = this.yAxisConfig.domain || [Infinity, -Infinity]
         const domainDefault = this.yDomainDefault
         return [
             Math.min(domain[0], domainDefault[0]),
@@ -783,9 +792,7 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
             const [v1, v2] = series.values
             const [x1, x2] = [xScale(v1.x), xScale(v2.x)]
             const [y1, y2] = [yScale(v1.y), yScale(v2.y)]
-            const fontSize =
-                (isPortrait ? 0.6 : 0.65) *
-                (this.manager.baseFontSize ?? BASE_FONT_SIZE)
+            const fontSize = (isPortrait ? 0.6 : 0.65) * this.fontSize
             const leftValueStr = yColumn.formatValueShort(v1.y)
             const rightValueStr = yColumn.formatValueShort(v2.y)
             const leftValueWidth = Bounds.forText(leftValueStr, {
@@ -960,37 +967,40 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
     @action.bound onMouseMove(
         ev: React.MouseEvent<SVGGElement> | React.TouchEvent<SVGGElement>
     ) {
-        const mouse = getRelativeMouse(this.base.current, ev.nativeEvent)
+        if (this.base.current) {
+            const mouse = getRelativeMouse(this.base.current, ev.nativeEvent)
 
-        this.mouseFrame = requestAnimationFrame(() => {
-            if (this.props.bounds.contains(mouse)) {
-                const distToSlope = new Map<SlopeProps, number>()
-                for (const s of this.slopeData) {
-                    const dist =
-                        Math.abs(
-                            (s.y2 - s.y1) * mouse.x -
-                                (s.x2 - s.x1) * mouse.y +
-                                s.x2 * s.y1 -
-                                s.y2 * s.x1
-                        ) / Math.sqrt((s.y2 - s.y1) ** 2 + (s.x2 - s.x1) ** 2)
-                    distToSlope.set(s, dist)
+            this.mouseFrame = requestAnimationFrame(() => {
+                if (this.props.bounds.contains(mouse)) {
+                    const distToSlope = new Map<SlopeProps, number>()
+                    for (const s of this.slopeData) {
+                        const dist =
+                            Math.abs(
+                                (s.y2 - s.y1) * mouse.x -
+                                    (s.x2 - s.x1) * mouse.y +
+                                    s.x2 * s.y1 -
+                                    s.y2 * s.x1
+                            ) /
+                            Math.sqrt((s.y2 - s.y1) ** 2 + (s.x2 - s.x1) ** 2)
+                        distToSlope.set(s, dist)
+                    }
+
+                    const closestSlope = minBy(this.slopeData, (s) =>
+                        distToSlope.get(s)
+                    )
+
+                    if (
+                        closestSlope &&
+                        (distToSlope.get(closestSlope) as number) < 20 &&
+                        this.props.onMouseOver
+                    ) {
+                        this.props.onMouseOver(closestSlope)
+                    } else {
+                        this.props.onMouseLeave()
+                    }
                 }
-
-                const closestSlope = minBy(this.slopeData, (s) =>
-                    distToSlope.get(s)
-                )
-
-                if (
-                    closestSlope &&
-                    (distToSlope.get(closestSlope) as number) < 20 &&
-                    this.props.onMouseOver
-                ) {
-                    this.props.onMouseOver(closestSlope)
-                } else {
-                    this.props.onMouseLeave()
-                }
-            }
-        })
+            })
+        }
     }
 
     @action.bound onClick() {
@@ -1024,9 +1034,9 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
     }
 
     render() {
-        const baseFontSize = this.manager.baseFontSize ?? BASE_FONT_SIZE
-        const yScaleType = this.yScaleType
         const {
+            fontSize,
+            yScaleType,
             bounds,
             slopeData,
             isPortrait,
@@ -1102,7 +1112,7 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
                     y={y1 + 10}
                     textAnchor="middle"
                     fill="#666"
-                    fontSize={baseFontSize}
+                    fontSize={fontSize}
                 >
                     {xDomain[0].toString()}
                 </Text>
@@ -1111,7 +1121,7 @@ class LabelledSlopes extends React.Component<LabelledSlopesProps> {
                     y={y1 + 10}
                     textAnchor="middle"
                     fill="#666"
-                    fontSize={baseFontSize}
+                    fontSize={fontSize}
                 >
                     {xDomain[1].toString()}
                 </Text>

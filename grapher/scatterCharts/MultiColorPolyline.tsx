@@ -20,7 +20,7 @@ interface Segment {
     color: string
 }
 
-function getMidpoint(a: Point, b: Point) {
+function getMidpoint(a: Point, b: Point): Point {
     return {
         x: (a.x + b.x) / 2,
         y: (a.y + b.y) / 2,
@@ -74,14 +74,12 @@ type MultiColorPolylineProps = Omit<
 }
 
 @observer
-export class MultiColorPolyline extends React.Component<
-    MultiColorPolylineProps
-> {
+export class MultiColorPolyline extends React.Component<MultiColorPolylineProps> {
     @computed get segments(): Segment[] {
         return getSegmentsFromPoints(this.props.points)
     }
 
-    render() {
+    render(): JSX.Element {
         const {
             markerStart,
             markerMid,

@@ -22,7 +22,6 @@ import { registerExitHandler } from "./cleanup"
 import {
     RelatedChart,
     CategoryWithEntries,
-    PageType,
     EntryNode,
     FullPost,
     WP_PostType,
@@ -35,6 +34,9 @@ import { getContentGraph, GraphType } from "./contentGraph"
 import { memoize } from "../clientUtils/Util"
 
 let knexInstance: Knex
+
+export const isWordpressAPIEnabled = WORDPRESS_URL.length > 0
+export const isWordpressDBEnabled = WORDPRESS_DB_NAME.length > 0
 
 class WPDB {
     private conn?: DatabaseConnection
@@ -299,6 +301,7 @@ let cachedEntries: CategoryWithEntries[] = []
 export const getEntriesByCategory = async (): Promise<
     CategoryWithEntries[]
 > => {
+    if (!isWordpressAPIEnabled) return []
     if (cachedEntries.length) return cachedEntries
 
     const first = 100
@@ -383,9 +386,9 @@ export const getEntriesByCategory = async (): Promise<
     return cachedEntries
 }
 
-export const getPageType = async (post: FullPost): Promise<PageType> => {
+export const isPostCitable = async (post: FullPost): Promise<boolean> => {
     const entries = await getEntriesByCategory()
-    const isEntry = entries.some((category) => {
+    return entries.some((category) => {
         return (
             category.entries.some((entry) => entry.slug === post.slug) ||
             category.subcategories.some((subcategory: CategoryWithEntries) => {
@@ -395,9 +398,6 @@ export const getPageType = async (post: FullPost): Promise<PageType> => {
             })
         )
     })
-
-    // TODO Add subEntry detection
-    return isEntry ? PageType.Entry : PageType.Standard
 }
 
 export const getPermalinks = async (): Promise<{
@@ -437,6 +437,8 @@ export const getPosts = async (
     postTypes: string[] = [WP_PostType.Post, WP_PostType.Page],
     limit?: number
 ): Promise<any[]> => {
+    if (!isWordpressAPIEnabled) return []
+
     const perPage = 50
     let posts: any[] = []
 
@@ -482,7 +484,11 @@ export const getPostType = async (search: number | string): Promise<string> => {
     })
 }
 
-export const getPostBySlug = async (slug: string): Promise<any[]> => {
+export const getPostBySlug = async (slug: string): Promise<FullPost> => {
+    if (!isWordpressAPIEnabled) {
+        throw new JsonError(`Need wordpress API to match slug ${slug}`, 404)
+    }
+
     try {
         const type = await getPostType(slug)
         const postArr = await apiQuery(
@@ -491,7 +497,7 @@ export const getPostBySlug = async (slug: string): Promise<any[]> => {
                 searchParams: [["slug", slug]],
             }
         )
-        return postArr[0]
+        return getFullPost(postArr[0])
     } catch (err) {
         throw new JsonError(`No page found by slug ${slug}`, 404)
     }
@@ -511,20 +517,20 @@ export const getLatestPostRevision = async (id: number): Promise<any> => {
         )
     )[0]
 
-    return {
-        // Since WP does not store metadata for revisions, some elements of a
-        // previewed page will not reflect the latest edits:
-        // - published date (will show the correct one - that is the one in the
-        //   sidebar - for unpublished posts though. For published posts, the
-        //   current published date is displayed, regardless of what is shown
-        //   and could have been modified in the sidebar.)
-        // - glossary highlights
-        // - authors
-        // ...
+    // Since WP does not store metadata for revisions, some elements of a
+    // previewed page will not reflect the latest edits:
+    // - published date (will show the correct one - that is the one in the
+    //   sidebar - for unpublished posts though. For published posts, the
+    //   current published date is displayed, regardless of what is shown
+    //   and could have been modified in the sidebar.)
+    // - glossary highlights
+    // - authors
+    // ...
+    return getFullPost({
         ...postApi,
         content: revision.content,
         title: revision.title,
-    }
+    })
 }
 
 export const getRelatedCharts = async (
@@ -570,16 +576,18 @@ export const getRelatedArticles = async (
 export const getBlockContent = async (
     id: number
 ): Promise<string | undefined> => {
+    if (!isWordpressAPIEnabled) return undefined
+
     const query = `
     query getBlock($id: ID!) {
-        wp_block(id: $id, idType: DATABASE_ID) {
+        wpBlock(id: $id, idType: DATABASE_ID) {
           content
         }
       }
     `
     const post = await graphqlQuery(query, { id })
 
-    return post.data?.wp_block?.content ?? undefined
+    return post.data?.wpBlock?.content ?? undefined
 }
 
 export const getFullPost = async (
@@ -592,8 +600,8 @@ export const getFullPost = async (
     path: postApi.slug, // kept for transitioning between legacy BPES (blog post as entry section) and future hierarchical paths
     title: decodeHTML(postApi.title.rendered),
     subtitle: postApi.meta.owid_subtitle_meta_field,
-    date: new Date(postApi.date),
-    modifiedDate: new Date(postApi.modified),
+    date: new Date(postApi.date_gmt),
+    modifiedDate: new Date(postApi.modified_gmt),
     authors: postApi.authors_name || [],
     content: excludeContent ? "" : postApi.content.rendered,
     excerpt: decodeHTML(postApi.excerpt.rendered),

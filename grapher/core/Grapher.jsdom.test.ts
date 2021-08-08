@@ -2,7 +2,6 @@
 import { Grapher } from "../core/Grapher"
 import {
     ChartTypeName,
-    DimensionProperty,
     EntitySelectionMode,
     GrapherTabOption,
     ScaleType,
@@ -30,6 +29,7 @@ import { OwidTable } from "../../coreTable/OwidTable"
 import { MapConfig } from "../mapCharts/MapConfig"
 import { ColumnTypeNames } from "../../coreTable/CoreColumnDef"
 import { SelectionArray } from "../selection/SelectionArray"
+import { DimensionProperty } from "../../clientUtils/owidTypes"
 
 const TestGrapherConfig = (): {
     table: OwidTable
@@ -206,6 +206,17 @@ describe("hasTimeline", () => {
         expect(grapher.hasTimeline).toBeFalsy()
         grapher.tab = GrapherTabOption.table
         expect(grapher.hasTimeline).toBeTruthy()
+    })
+
+    it("source and download tabs do not have a timeline", () => {
+        const grapher = new Grapher(legacyConfig)
+        grapher.type = ChartTypeName.LineChart
+
+        grapher.currentTab = GrapherTabOption.sources
+        expect(grapher.hasTimeline).toBeFalsy()
+
+        grapher.currentTab = GrapherTabOption.download
+        expect(grapher.hasTimeline).toBeFalsy()
     })
 })
 

@@ -82,7 +82,7 @@ Below is the (current) list of Bedrock files grouped by the type of action to be
 
 #### Override
 
--   /config
+-   /config/environments
 -   /web/app/mu-plugins
 -   /web/index.php
 -   /web/wp-config.php
@@ -101,11 +101,12 @@ Below is the (current) list of Bedrock files grouped by the type of action to be
 #### Selectively update
 
 -   /composer.json (keep versions pinned)
+-   /config/application.php
 -   /LICENSE.md (change unlikely)
 
 ### Wordpress, Wordpress plugins
 
-1. `lando composer outdated --direct` to find the latest versions of
+1. `lando ssh` then `composer outdated --direct` to find the latest versions of
    direct dependencies
 2. Update composer.json with the new pinned version
 3. `lando composer update`

@@ -3,21 +3,26 @@ import dayjs, { Dayjs } from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
 dayjs.extend(relativeTime)
 
-export const CovidLastUpdated = () => {
-    const [date, setDate] = useState<null | Dayjs>(null)
+export interface LastUpdatedTokenProps {
+    timestampUrl?: string
+}
 
+export const LastUpdated = ({ timestampUrl }: LastUpdatedTokenProps) => {
+    const [date, setDate] = useState<null | Dayjs>(null)
     useEffect(() => {
         const fetchTimeStamp = async () => {
-            const response = await fetch(
-                "https://covid.ourworldindata.org/data/owid-covid-data-last-updated-timestamp.txt"
-            )
+            if (!timestampUrl) return
+            const response = await fetch(timestampUrl)
             if (!response.ok) return
-            const timestamp = await response.text()
-            setDate(
+            const timestampRaw = await response.text()
+            const timestamp = timestampRaw.trim()
+            const parsedDate =
                 timestamp.length < 20
                     ? dayjs(`${timestamp}Z`)
                     : dayjs(timestamp)
-            )
+
+            if (!parsedDate.isValid()) return
+            setDate(parsedDate)
         }
         fetchTimeStamp()
     }, [])

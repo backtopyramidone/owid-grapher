@@ -5,7 +5,10 @@ env_file:
 config:
     webroot: web
     via: nginx
-    xdebug: true
+    # Remove next line once the Lando Wordpress recipe upgrades Composer >= 2.0.12
+    # Fixed support for new GitHub OAuth token format (#9757)
+    # see https://getcomposer.org/changelog/2.0.12
+    composer_version: "2.1.2"
     config:
         vhosts: .lando/config/vhosts.conf
 excludes:
@@ -15,10 +18,13 @@ excludes:
     - web/app/plugins/owid/node_modules
 services:
     appserver:
+        xdebug: true
+        config:
+            php: .lando/config/php.ini
         build_as_root:
             - ln -sf /user/.ssh/config /var/www/.ssh/config
     node:
-        type: node:12.13.1
+        type: node:12.22.3
     database:
         portforward: 3306
         healthcheck:

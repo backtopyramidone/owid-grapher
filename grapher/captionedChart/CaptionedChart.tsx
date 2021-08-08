@@ -11,6 +11,7 @@ import {
 import {
     BASE_FONT_SIZE,
     ChartTypeName,
+    FacetStrategy,
     GrapherTabOption,
 } from "../core/GrapherConstants"
 import { MapChartManager } from "../mapCharts/MapChartConstants"
@@ -28,6 +29,10 @@ import {
     SmallCountriesFilterManager,
     AbsRelToggleManager,
     HighlightToggleManager,
+    FacetYDomainToggle,
+    FacetYDomainToggleManager,
+    FacetStrategyDropdown,
+    FacetStrategyDropdownManager,
 } from "../controls/Controls"
 import { ScaleSelector } from "../controls/ScaleSelector"
 import { AddEntityButton } from "../controls/AddEntityButton"
@@ -37,6 +42,7 @@ import { HeaderManager } from "../header/HeaderManager"
 import { exposeInstanceOnWindow } from "../../clientUtils/Util"
 import { SelectionArray } from "../selection/SelectionArray"
 import { EntityName } from "../../coreTable/OwidTableConstants"
+import { AxisConfig } from "../axis/AxisConfig"
 
 export interface CaptionedChartManager
     extends ChartManager,
@@ -45,12 +51,16 @@ export interface CaptionedChartManager
         HighlightToggleManager,
         AbsRelToggleManager,
         FooterManager,
-        HeaderManager {
+        HeaderManager,
+        FacetYDomainToggleManager,
+        FacetStrategyDropdownManager {
     containerElement?: HTMLDivElement
     tabBounds?: Bounds
     fontSize?: number
     tab?: GrapherTabOption
     type?: ChartTypeName
+    yAxis?: AxisConfig
+    xAxis?: AxisConfig
     typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart?: ChartTypeName
     isReady?: boolean
     whatAreWeWaitingFor?: string
@@ -61,6 +71,7 @@ export interface CaptionedChartManager
     showXScaleToggle?: boolean
     showZoomToggle?: boolean
     showAbsRelToggle?: boolean
+    showFacetYDomainToggle?: boolean
     showHighlightToggle?: boolean
     showChangeEntityButton?: boolean
     showAddEntityButton?: boolean
@@ -134,6 +145,13 @@ export class CaptionedChart extends React.Component<CaptionedChartProps> {
             .padBottom(OUTSIDE_PADDING)
     }
 
+    @computed get isFaceted(): boolean {
+        const hasStrategy =
+            !!this.manager.facetStrategy &&
+            this.manager.facetStrategy !== FacetStrategy.none
+        return !this.isMapTab && hasStrategy
+    }
+
     renderChart(): JSX.Element {
         const { manager } = this
         const bounds = this.boundsForChart
@@ -147,7 +165,7 @@ export class CaptionedChart extends React.Component<CaptionedChartProps> {
             ChartComponentClassMap.get(chartTypeName) ?? DefaultChartClass
 
         // Todo: make FacetChart a chart type name?
-        if (!this.isMapTab && manager.facetStrategy)
+        if (this.isFaceted)
             return (
                 <FacetChart
                     bounds={bounds}
@@ -237,8 +255,28 @@ export class CaptionedChart extends React.Component<CaptionedChartProps> {
         if (manager.showZoomToggle)
             controls.push(<ZoomToggle key="ZoomToggle" manager={manager} />)
 
+        if (
+            !manager.hideFacetControl &&
+            manager.availableFacetStrategies.length > 1
+        ) {
+            controls.push(
+                <FacetStrategyDropdown
+                    key="FacetStrategyDropdown"
+                    manager={manager}
+                />
+            )
+        }
+
         if (manager.showAbsRelToggle)
             controls.push(<AbsRelToggle key="AbsRelToggle" manager={manager} />)
+
+        if (manager.showFacetYDomainToggle)
+            controls.push(
+                <FacetYDomainToggle
+                    key="FacetYDomainToggle"
+                    manager={manager}
+                />
+            )
 
         if (manager.showHighlightToggle)
             controls.push(

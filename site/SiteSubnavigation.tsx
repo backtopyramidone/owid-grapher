@@ -156,7 +156,7 @@ export const subnavs: { [key in SubNavId]: SubnavItem[] } = {
     forests: [
         {
             label: "Forests",
-            href: "/forests",
+            href: "/forests-and-deforestation",
             id: "forests",
         },
         {
@@ -252,59 +252,92 @@ export const subnavs: { [key in SubNavId]: SubnavItem[] } = {
             id: "protected-areas-and-conservation",
         },
     ],
+    water: [
+        {
+            label: "Clean Water and Sanitation",
+            href: "/clean-water-sanitation",
+            id: "wash",
+        },
+        {
+            label: "Data explorer",
+            href: "/explorers/water-and-sanitation",
+            id: "wash-data-explorer",
+        },
+        {
+            label: "Drinking water",
+            href: "/water-access",
+            id: "drinking-water",
+        },
+        {
+            label: "Sanitation",
+            href: "/sanitation",
+            id: "sanitation",
+        },
+        {
+            label: "Handwashing",
+            href: "/hygiene",
+            id: "hygiene",
+        },
+    ],
 }
 
-export class SiteSubnavigation extends React.Component<{
+export const getTopSubnavigationParentItem = (
+    subnavId: SubNavId
+): SubnavItem | undefined => {
+    return subnavs[subnavId]?.[0]
+}
+
+export const SiteSubnavigation = ({
+    subnavId,
+    subnavCurrentId,
+}: {
     subnavId: SubNavId
     subnavCurrentId?: string
-}> {
-    render() {
-        const { subnavId, subnavCurrentId } = this.props
-        const subnavLinks = subnavs[subnavId]
-        return subnavLinks ? (
-            <div className="offset-subnavigation">
-                <div className="site-subnavigation">
-                    <div className="site-subnavigation-scroll">
-                        <ul className="site-subnavigation-links">
-                            {subnavLinks.map(
-                                ({ href, label, id, highlight }, idx) => {
-                                    const classes: string[] = []
-                                    const dataTrackNote = [
-                                        subnavId,
-                                        "subnav",
-                                        id,
-                                    ].join("-")
-                                    if (id === subnavCurrentId)
-                                        classes.push("current")
-                                    if (highlight) classes.push("highlight")
-                                    return (
-                                        <li
-                                            className={
-                                                (classes.length &&
-                                                    classes.join(" ")) ||
-                                                ""
-                                            }
-                                            key={href}
+}) => {
+    const subnavLinks = subnavs[subnavId]
+    return subnavLinks ? (
+        <div className="offset-subnavigation">
+            <div className="site-subnavigation">
+                <div className="site-subnavigation-scroll">
+                    <ul className="site-subnavigation-links">
+                        {subnavLinks.map(
+                            ({ href, label, id, highlight }, idx) => {
+                                const classes: string[] = []
+                                const dataTrackNote = [
+                                    subnavId,
+                                    "subnav",
+                                    id,
+                                ].join("-")
+                                if (id === subnavCurrentId)
+                                    classes.push("current")
+                                if (highlight) classes.push("highlight")
+                                return (
+                                    <li
+                                        className={
+                                            (classes.length &&
+                                                classes.join(" ")) ||
+                                            ""
+                                        }
+                                        key={href}
+                                    >
+                                        <a
+                                            href={href}
+                                            data-track-note={dataTrackNote}
                                         >
-                                            <a
-                                                href={href}
-                                                data-track-note={dataTrackNote}
-                                            >
-                                                {label}
-                                                {idx === 0 && (
-                                                    <FontAwesomeIcon
-                                                        icon={faChevronLeft}
-                                                    />
-                                                )}
-                                            </a>
-                                        </li>
-                                    )
-                                }
-                            )}
-                        </ul>
-                    </div>
+                                            {label}
+                                            {idx === 0 && (
+                                                <FontAwesomeIcon
+                                                    icon={faChevronLeft}
+                                                />
+                                            )}
+                                        </a>
+                                    </li>
+                                )
+                            }
+                        )}
+                    </ul>
                 </div>
             </div>
-        ) : null
-    }
+        </div>
+    ) : null
 }

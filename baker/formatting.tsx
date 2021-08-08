@@ -1,8 +1,23 @@
 import * as cheerio from "cheerio"
-import { FormattedPost, FormattingOptions } from "../clientUtils/owidTypes"
+import {
+    DataValueConfiguration,
+    DataValueQueryArgs,
+    DimensionProperty,
+    FormattedPost,
+    FormattingOptions,
+    KeyValueProps,
+    LegacyVariableId,
+} from "../clientUtils/owidTypes"
 import { Country } from "../clientUtils/countries"
 import { countryProfileDefaultCountryPlaceholder } from "../site/countryProfileProjects"
 import { BAKED_BASE_URL, WORDPRESS_URL } from "../settings/serverSettings"
+import { DATA_VALUE } from "../site/DataValue"
+import { LegacyVariablesAndEntityKey } from "../grapher/core/LegacyVariableCode"
+import {
+    LegacyChartDimensionInterface,
+    LegacyVariableDisplayConfigInterface,
+} from "../clientUtils/LegacyVariableDisplayConfigInterface"
+import { legacyToOwidTableAndDimensions } from "../grapher/core/LegacyToOwidTable"
 
 export const DEEP_LINK_CLASS = "deep-link"
 
@@ -40,23 +55,106 @@ export const extractFormattingOptions = (html: string): FormattingOptions => {
 // Converts "toc:false raw somekey:somevalue" to { toc: false, raw: true, somekey: "somevalue" }
 // If only the key is specified, the value is assumed to be true (e.g. "raw" above)
 export const parseFormattingOptions = (text: string): FormattingOptions => {
+    return parseKeyValueArgs(text)
+}
+
+export const dataValueRegex = new RegExp(
+    `{{\\s*${DATA_VALUE}\\s*(.+?)\\s*}}`,
+    "g"
+)
+
+export const extractDataValuesConfiguration = async (
+    html: string
+): Promise<Map<string, DataValueConfiguration>> => {
+    const dataValueSeparator = /\s*\|\s*/
+    const dataValuesConfigurations = new Map<string, DataValueConfiguration>()
+
+    const dataValueMatches = html.matchAll(dataValueRegex)
+    for (const match of dataValueMatches) {
+        const dataValueConfigurationString = match[1]
+        const [queryArgsString, template] = dataValueConfigurationString.split(
+            dataValueSeparator
+        )
+        const queryArgs = parseDataValueArgs(queryArgsString)
+
+        dataValuesConfigurations.set(dataValueConfigurationString, {
+            queryArgs,
+            template,
+        })
+    }
+    return dataValuesConfigurations
+}
+
+export const parseDataValueArgs = (
+    rawArgsString: string
+): DataValueQueryArgs => {
+    return Object.fromEntries(
+        Object.entries(parseKeyValueArgs(rawArgsString)).map(([k, v]) => [
+            k,
+            Number(v),
+        ])
+    )
+}
+
+export const parseKeyValueArgs = (text: string): KeyValueProps => {
     const options: { [key: string]: string | boolean } = {}
     text.split(/\s+/)
         // filter out empty strings
         .filter((s) => s && s.length > 0)
-        // populate options object
         .forEach((option: string) => {
-            const [name, value] = option.split(":") as [
+            // using regex instead of split(":") to handle ":" in value
+            // e.g. {{LastUpdated timestampUrl:https://...}}
+            const optionRegex = /([^:]+):?(.*)/
+            const [, name, value] = option.match(optionRegex) as [
+                any,
                 string,
-                string | undefined
+                string
             ]
             let parsedValue
-            if (value === undefined || value === "true") parsedValue = true
+            if (value === "" || value === "true") parsedValue = true
             else if (value === "false") parsedValue = false
             else parsedValue = value
             options[name] = parsedValue
         })
     return options
+}
+
+export const formatDataValue = (
+    value: number,
+    variableId: LegacyVariableId,
+    legacyVariableDisplayConfig: LegacyVariableDisplayConfigInterface = {},
+    legacyChartDimension: LegacyChartDimensionInterface | undefined
+) => {
+    if (!legacyChartDimension) return
+    const legacyVariableConfig: LegacyVariablesAndEntityKey = {
+        entityKey: {},
+        variables: {
+            [variableId]: {
+                id: variableId,
+                display: legacyVariableDisplayConfig,
+                values: [value],
+            },
+        },
+    }
+
+    const legacyGrapherConfig = {
+        dimensions: [
+            {
+                ...legacyChartDimension,
+            },
+        ],
+    }
+
+    const { table, dimensions } = legacyToOwidTableAndDimensions(
+        legacyVariableConfig,
+        legacyGrapherConfig
+    )
+
+    const formattedValueWithUnit = table
+        .get(dimensions[0].slug)
+        .formatValueLong(table.rows[0][variableId])
+
+    return formattedValueWithUnit
 }
 
 export const formatCountryProfile = (

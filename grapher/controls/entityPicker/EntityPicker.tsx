@@ -21,7 +21,7 @@ import {
 } from "../../../clientUtils/Util"
 import { VerticalScrollContainer } from "../../controls/VerticalScrollContainer"
 import { SortIcon } from "../../controls/SortIcon"
-import { ColumnSlug, SortOrder } from "../../../coreTable/CoreTableConstants"
+import { SortOrder } from "../../../coreTable/CoreTableConstants"
 import {
     getStylesForTargetHeight,
     asArray,
@@ -35,6 +35,7 @@ import { EntityPickerManager } from "./EntityPickerConstants"
 import { CoreColumnDef } from "../../../coreTable/CoreColumnDef"
 import { OwidTable } from "../../../coreTable/OwidTable"
 import { SelectionArray } from "../../selection/SelectionArray"
+import { ColumnSlug } from "../../../clientUtils/owidTypes"
 
 const toggleSort = (order: SortOrder): SortOrder =>
     order === SortOrder.desc ? SortOrder.asc : SortOrder.desc
@@ -65,21 +66,18 @@ export class EntityPicker extends React.Component<{
     }
 
     @observable private searchInput?: string
-    @observable private searchInputRef: React.RefObject<
-        HTMLInputElement
-    > = React.createRef()
+    @observable
+    private searchInputRef: React.RefObject<HTMLInputElement> = React.createRef()
 
     @observable private focusIndex?: number
-    @observable private focusRef: React.RefObject<
-        HTMLLabelElement
-    > = React.createRef()
+    @observable
+    private focusRef: React.RefObject<HTMLLabelElement> = React.createRef()
     @observable private scrollFocusedIntoViewOnUpdate = false
 
     @observable private blockOptionHover = false
 
-    @observable private scrollContainerRef: React.RefObject<
-        HTMLDivElement
-    > = React.createRef()
+    @observable
+    private scrollContainerRef: React.RefObject<HTMLDivElement> = React.createRef()
 
     @observable private isOpen = false
 

@@ -1,20 +1,16 @@
 // We're importing every item on its own to enable webpack tree shaking
-import assign from "lodash/assign"
 import capitalize from "lodash/capitalize"
+import chunk from "lodash/chunk"
 import clone from "lodash/clone"
 import cloneDeep from "lodash/cloneDeep"
 import compact from "lodash/compact"
 import countBy from "lodash/countBy"
 import debounce from "lodash/debounce"
 import difference from "lodash/difference"
-import differenceBy from "lodash/differenceBy"
-import dropWhile from "lodash/dropWhile"
 import extend from "lodash/extend"
 import findIndex from "lodash/findIndex"
 import flatten from "lodash/flatten"
-import fromPairs from "lodash/fromPairs"
 import groupBy from "lodash/groupBy"
-import has from "lodash/has"
 import identity from "lodash/identity"
 import invert from "lodash/invert"
 import isEmpty from "lodash/isEmpty"
@@ -23,8 +19,7 @@ import isNumber from "lodash/isNumber"
 import isObject from "lodash/isObject"
 import isString from "lodash/isString"
 import keyBy from "lodash/keyBy"
-import map from "lodash/map"
-import mapKeys from "lodash/mapKeys"
+import mapValues from "lodash/mapValues"
 import max from "lodash/max"
 import maxBy from "lodash/maxBy"
 import memoize from "lodash/memoize"
@@ -42,14 +37,11 @@ import round from "lodash/round"
 import sample from "lodash/sample"
 import sampleSize from "lodash/sampleSize"
 import sortBy from "lodash/sortBy"
-import sortedIndexBy from "lodash/sortedIndexBy"
-import sortedUniq from "lodash/sortedUniq"
 import startCase from "lodash/startCase"
 import sum from "lodash/sum"
 import sumBy from "lodash/sumBy"
 import takeWhile from "lodash/takeWhile"
 import throttle from "lodash/throttle"
-import toArray from "lodash/toArray"
 import toString from "lodash/toString"
 import union from "lodash/union"
 import uniq from "lodash/uniq"
@@ -57,24 +49,19 @@ import uniqBy from "lodash/uniqBy"
 import uniqWith from "lodash/uniqWith"
 import upperFirst from "lodash/upperFirst"
 import without from "lodash/without"
-import xor from "lodash/xor"
 export {
-    assign,
     capitalize,
+    chunk,
     clone,
     cloneDeep,
     compact,
     countBy,
     debounce,
     difference,
-    differenceBy,
-    dropWhile,
     extend,
     findIndex,
     flatten,
-    fromPairs,
     groupBy,
-    has,
     identity,
     invert,
     isEmpty,
@@ -82,8 +69,7 @@ export {
     isNumber,
     isString,
     keyBy,
-    map,
-    mapKeys,
+    mapValues,
     max,
     maxBy,
     memoize,
@@ -97,17 +83,15 @@ export {
     pick,
     range,
     reverse,
+    round,
     sample,
     sampleSize,
     sortBy,
-    sortedIndexBy,
-    sortedUniq,
     startCase,
     sum,
     sumBy,
     takeWhile,
     throttle,
-    toArray,
     toString,
     union,
     uniq,
@@ -115,7 +99,6 @@ export {
     uniqWith,
     upperFirst,
     without,
-    xor,
 }
 import { extent, pairs } from "d3-array"
 export { pairs }
@@ -124,12 +107,19 @@ import { formatLocale } from "d3-format"
 import striptags from "striptags"
 import parseUrl from "url-parse"
 import linkifyHtml from "linkifyjs/html"
-import { SortOrder, Integer, Time, EPOCH_DATE, ScaleType } from "./owidTypes"
+import {
+    SortOrder,
+    Integer,
+    Time,
+    EPOCH_DATE,
+    ScaleType,
+    VerticalAlign,
+    HorizontalAlign,
+    IDEAL_PLOT_ASPECT_RATIO,
+    GridParameters,
+} from "./owidTypes"
 import { PointVector } from "./PointVector"
 import { isNegativeInfinity, isPositiveInfinity } from "./TimeBounds"
-
-export type SVGElement = any
-export type VNode = any
 
 export type NoUndefinedValues<T> = {
     [P in keyof T]: Required<NonNullable<T[P]>>
@@ -145,10 +135,19 @@ export const d3Format = formatLocale({
     grouping: [3],
     minus: "-",
     currency: ["$", ""],
-} as any).format
+}).format
+
+const getRootSVG = (
+    element: Element | SVGGraphicsElement | SVGSVGElement
+): SVGSVGElement | undefined => {
+    if ("createSVGPoint" in element) return element
+    if ("ownerSVGElement" in element)
+        return element.ownerSVGElement || undefined
+    return undefined
+}
 
 export const getRelativeMouse = (
-    node: SVGElement,
+    node: Element | SVGGraphicsElement | SVGSVGElement,
     event: TouchEvent | { clientX: number; clientY: number }
 ): PointVector => {
     const isTouchEvent = !!(event as TouchEvent).targetTouches
@@ -157,13 +156,13 @@ export const getRelativeMouse = (
         : (event as MouseEvent)
 
     const { clientX, clientY } = eventOwner
-    const svg = node.ownerSVGElement || node
 
-    if (svg.createSVGPoint) {
+    const svg = getRootSVG(node)
+    if (svg && "getScreenCTM" in node) {
         const svgPoint = svg.createSVGPoint()
         svgPoint.x = clientX
         svgPoint.y = clientY
-        const point = svgPoint.matrixTransform(node.getScreenCTM().inverse())
+        const point = svgPoint.matrixTransform(node.getScreenCTM()?.inverse())
         return new PointVector(point.x, point.y)
     }
 
@@ -207,7 +206,7 @@ export function formatDay(
     dayAsYear: number,
     options?: { format?: string }
 ): string {
-    const format = defaultTo(options?.format, "MMM D, YYYY")
+    const format = options?.format ?? "MMM D, YYYY"
     // Use moments' UTC mode https://momentjs.com/docs/#/parsing/utc/
     // This will force moment to format in UTC time instead of local time,
     // making dates consistent no matter what timezone the user is in.
@@ -225,17 +224,27 @@ export const formatYear = (year: number): string => {
         : year.toString()
 }
 
-export const roundSigFig = (num: number, sigfigs: number = 1): number => {
+/**
+ *  Computes the base-10 magnitude of a number, which can be useful for rounding by sigfigs etc.
+ * Formally, numberMagnitude computes `m` such that `10^(m-1) <= abs(num) < 10^m`.
+ * Equivalently, `num / 10^(numberMagnitude(num))` is always in the range ±[0.1, 1[.
+ *
+ * - numberMagnitude(0.5) = 0
+ * - numberMagnitude(1) = 1
+ * - numberMagnitude(-2) = 1
+ * - numberMagnitude(100) = 3
+ */
+export const numberMagnitude = (num: number): number => {
     if (num === 0) return 0
-    const magnitude = Math.floor(Math.log10(Math.abs(num)))
-    return round(num, -magnitude + sigfigs - 1)
+    const magnitude = Math.floor(Math.log10(Math.abs(num))) + 1
+    return Number.isFinite(magnitude) ? magnitude : 0
 }
 
-// todo: remove
-export const defaultTo = <T, K>(
-    value: T | undefined | null,
-    defaultValue: K
-): T | K => value ?? defaultValue
+export const roundSigFig = (num: number, sigfigs: number = 1): number => {
+    if (num === 0) return 0
+    const magnitude = numberMagnitude(num)
+    return round(num, -magnitude + sigfigs)
+}
 
 export const first = <T>(arr: readonly T[]): T | undefined => arr[0]
 
@@ -254,14 +263,15 @@ export const lastOfNonEmptyArray = <T>(arr: T[]): T => {
     return last(arr) as T
 }
 
-interface ObjectLiteral {
-    [key: string]: any
-}
-export const mapToObjectLiteral = (map: Map<string, any>): ObjectLiteral =>
-    Array.from(map).reduce((objLit, [key, value]) => {
-        objLit[key.toString()] = value
+export const mapToObjectLiteral = <K>(
+    map: Map<string, K>
+): Record<string, K> => {
+    const init: Record<string, K> = {}
+    return Array.from(map).reduce((objLit, [key, value]) => {
+        objLit[key] = value
         return objLit
-    }, {} as ObjectLiteral)
+    }, init)
+}
 
 export function next<T>(set: T[], current: T): T {
     let nextIndex = set.indexOf(current) + 1
@@ -390,6 +400,7 @@ export const slugifySameCase = (str: string): string =>
 // Useful for coordinating between embeds to avoid conflicts in their ids
 let _guid = 0
 export const guid = (): number => ++_guid
+export const TESTING_ONLY_reset_guid = () => (_guid = 0)
 
 // Take an array of points and make it into an SVG path specification string
 export const pointsToPath = (points: Array<[number, number]>): string => {
@@ -459,9 +470,11 @@ export interface Json {
 }
 
 // Escape a function for storage in a csv cell
-export const csvEscape = (value: any): any => {
+export const csvEscape = (value: unknown): string => {
     const valueStr = toString(value)
-    return valueStr.includes(",") ? `"${value.replace(/\"/g, '""')}"` : value
+    return valueStr.includes(",")
+        ? `"${valueStr.replace(/\"/g, '""')}"`
+        : valueStr
 }
 
 export const arrToCsvRow = (arr: string[]): string =>
@@ -473,9 +486,6 @@ export const urlToSlug = (url: string): string =>
             .pathname.split("/")
             .filter((x) => x)
     ) as string
-
-export const sign = (num: number): 0 | 1 | -1 =>
-    num > 0 ? 1 : num < 0 ? -1 : 0
 
 // Removes all undefineds from an object.
 export const trimObject = <Obj>(
@@ -550,7 +560,7 @@ export const sampleFrom = <T>(
 
 // A seeded array shuffle
 // https://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
-const shuffleArray = (array: any[], seed = Date.now()): any[] => {
+const shuffleArray = <T>(array: T[], seed = Date.now()): T[] => {
     const rand = getRandomNumberGenerator(0, 100, seed)
     const clonedArr = array.slice()
     for (let index = clonedArr.length - 1; index > 0; index--) {
@@ -563,12 +573,26 @@ const shuffleArray = (array: any[], seed = Date.now()): any[] => {
     return clonedArr
 }
 
-export const makeGrid = (pieces: number): { columns: number; rows: number } => {
-    const columns = Math.ceil(Math.sqrt(pieces))
-    const rows = Math.ceil(pieces / columns)
+export const getIdealGridParams = ({
+    count,
+    containerAspectRatio,
+    idealAspectRatio = IDEAL_PLOT_ASPECT_RATIO,
+}: {
+    count: number
+    containerAspectRatio: number
+    idealAspectRatio?: number
+}): GridParameters => {
+    // See Observable notebook: https://observablehq.com/@danielgavrilov/pack-rectangles-of-a-preferred-aspect-ratio
+    // Also Desmos graph: https://www.desmos.com/calculator/tmajzuq5tm
+    const ratio = containerAspectRatio / idealAspectRatio
+    // prefer vertical grid for count=2
+    if (count === 2 && ratio < 2) return { rows: 2, columns: 1 }
+    // otherwise, optimize for closest to the ideal aspect ratio
+    const columns = Math.min(Math.round(Math.sqrt(count * ratio)), count)
+    const rows = Math.ceil(count / columns)
     return {
-        columns,
         rows,
+        columns,
     }
 }
 
@@ -800,7 +824,7 @@ export function keyMap<Key, Value>(
 
 export const linkify = (str: string): string => linkifyHtml(str)
 
-export const oneOf = <T>(value: any, options: T[], defaultOption: T): T => {
+export const oneOf = <T>(value: unknown, options: T[], defaultOption: T): T => {
     for (const option of options) {
         if (value === option) return option
     }
@@ -836,7 +860,7 @@ export function sortByUndefinedLast<T>(
     array: T[],
     accessor: (t: T) => string | number | undefined,
     order: SortOrder = SortOrder.asc
-): any {
+): T[] {
     const sorted = sortBy(array, (value) => {
         const mapped = accessor(value)
         if (mapped === undefined) {
@@ -884,12 +908,12 @@ export const sortNumeric = <T>(
             : (a: T, b: T): number => sortByFn(b) - sortByFn(a)
     )
 
-export const mapBy = <T>(
+export const mapBy = <T, K, V>(
     arr: T[],
-    keyAccessor: (t: T) => any,
-    valueAccessor: (t: T) => any
-): Map<any, any> => {
-    const map = new Map()
+    keyAccessor: (t: T) => K,
+    valueAccessor: (t: T) => V
+): Map<K, V> => {
+    const map = new Map<K, V>()
     arr.forEach((val) => {
         map.set(keyAccessor(val), valueAccessor(val))
     })
@@ -898,8 +922,8 @@ export const mapBy = <T>(
 
 // Adapted from lodash baseFindIndex which is ~2x as fast as the wrapped findIndex
 export const findIndexFast = (
-    array: any[],
-    predicate: (value: any, index: number) => boolean,
+    array: unknown[],
+    predicate: (value: unknown, index: number) => boolean,
     fromIndex = 0,
     toIndex = array.length
 ): number => {
@@ -922,13 +946,6 @@ export const logMe = (
         return originalMethod.apply(this, args)
     }
     return descriptor
-}
-
-export const splitArrayIntoGroupsOfN = (arr: any[], maxPerGroup: number) => {
-    const result: any[] = []
-    for (let index = 0; index < arr.length; index += maxPerGroup)
-        result.push(arr.slice(index, index + maxPerGroup))
-    return result
 }
 
 export function getClosestTimePairs(
@@ -1031,8 +1048,8 @@ export const isInIFrame = (): boolean => {
 }
 
 export const differenceObj = <
-    A extends Record<string, any>,
-    B extends Record<string, any>
+    A extends Record<string, unknown>,
+    B extends Record<string, unknown>
 >(
     obj: A,
     defaultObj: B
@@ -1065,4 +1082,22 @@ export const wrapInDiv = (el: Element, classes?: string[]): Element => {
     el.parentNode.insertBefore(wrapper, el)
     wrapper.appendChild(el)
     return wrapper
+}
+
+export const textAnchorFromAlign = (
+    align: HorizontalAlign
+): "start" | "middle" | "end" => {
+    if (align === HorizontalAlign.center) return "middle"
+    if (align === HorizontalAlign.right) return "end"
+    return "start"
+}
+
+export const dyFromAlign = (align: VerticalAlign): string => {
+    if (align === VerticalAlign.middle) return ".32em"
+    if (align === VerticalAlign.bottom) return ".71em"
+    return "0"
+}
+
+export const values = <Obj>(obj: Obj): Obj[keyof Obj][] => {
+    return Object.values(obj)
 }

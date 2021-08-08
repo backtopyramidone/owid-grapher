@@ -9,6 +9,7 @@ import {
     flatten,
     last,
     exposeInstanceOnWindow,
+    round,
 } from "../../clientUtils/Util"
 import { computed, action, observable } from "mobx"
 import { observer } from "mobx-react"
@@ -34,7 +35,7 @@ import {
     SeriesStrategy,
 } from "../core/GrapherConstants"
 import { ColorSchemes } from "../color/ColorSchemes"
-import { AxisConfig } from "../axis/AxisConfig"
+import { AxisConfig, FontSizeManager } from "../axis/AxisConfig"
 import { ChartInterface } from "../chart/ChartInterface"
 import {
     LinesProps,
@@ -49,6 +50,7 @@ import {
     autoDetectSeriesStrategy,
     autoDetectYColumnSlugs,
     getDefaultFailMessage,
+    getSeriesKey,
     makeClipPath,
     makeSelectionArray,
 } from "../chart/ChartUtils"
@@ -70,6 +72,8 @@ class Lines extends React.Component<LinesProps> {
     @action.bound private onCursorMove(ev: MouseEvent | TouchEvent): void {
         const { dualAxis } = this.props
         const { horizontalAxis } = dualAxis
+
+        if (!this.base.current) return
 
         const mouse = getRelativeMouse(this.base.current, ev)
 
@@ -117,11 +121,8 @@ class Lines extends React.Component<LinesProps> {
     @computed private get hasMarkers(): boolean {
         if (this.props.hidePoints) return false
         return (
-            sum(
-                this.props.placedSeries.map(
-                    (series) => series.placedPoints.length
-                )
-            ) < 500
+            sum(this.focusedLines.map((series) => series.placedPoints.length)) <
+            500
         )
     }
 
@@ -130,43 +131,55 @@ class Lines extends React.Component<LinesProps> {
     }
 
     private renderFocusGroups(): JSX.Element[] {
-        return this.focusedLines.map((series, index) => (
-            <g key={index}>
-                <path
-                    stroke={series.color}
-                    strokeLinecap="round"
-                    d={pointsToPath(
-                        series.placedPoints.map((value) => [
-                            value.x,
-                            value.y,
-                        ]) as [number, number][]
+        return this.focusedLines.map((series, index) => {
+            // If the series only contains one point, then we will always want to show a marker/circle
+            // because we can't draw a line.
+            const showMarkers =
+                (this.hasMarkers || series.placedPoints.length === 1) &&
+                !series.isProjection
+
+            return (
+                <g key={index}>
+                    <path
+                        stroke={series.color}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d={pointsToPath(
+                            series.placedPoints.map((value) => [
+                                value.x,
+                                value.y,
+                            ]) as [number, number][]
+                        )}
+                        fill="none"
+                        strokeWidth={this.strokeWidth}
+                        strokeDasharray={
+                            series.isProjection ? "1,4" : undefined
+                        }
+                    />
+                    {showMarkers && (
+                        <g fill={series.color}>
+                            {series.placedPoints.map((value, index) => (
+                                <circle
+                                    key={index}
+                                    cx={value.x}
+                                    cy={value.y}
+                                    r={2}
+                                />
+                            ))}
+                        </g>
                     )}
-                    fill="none"
-                    strokeWidth={this.strokeWidth}
-                    strokeDasharray={series.isProjection ? "1,4" : undefined}
-                />
-                {this.hasMarkers && !series.isProjection && (
-                    <g fill={series.color}>
-                        {series.placedPoints.map((value, index) => (
-                            <circle
-                                key={index}
-                                cx={value.x}
-                                cy={value.y}
-                                r={2}
-                            />
-                        ))}
-                    </g>
-                )}
-            </g>
-        ))
+                </g>
+            )
+        })
     }
 
     private renderBackgroundGroups(): JSX.Element[] {
         return this.backgroundLines.map((series, index) => (
             <g key={index}>
                 <path
-                    key={`${series.seriesName}-${series.color}-line`}
+                    key={getSeriesKey(series, "line")}
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                     stroke="#ddd"
                     d={pointsToPath(
                         series.placedPoints.map((value) => [
@@ -232,7 +245,7 @@ export class LineChart
         bounds?: Bounds
         manager: LineChartManager
     }>
-    implements ChartInterface, LineLegendManager {
+    implements ChartInterface, LineLegendManager, FontSizeManager {
     base: React.RefObject<SVGGElement> = React.createRef()
 
     transformTable(table: OwidTable): OwidTable {
@@ -276,9 +289,14 @@ export class LineChart
         return table
     }
 
-    @observable hoverX?: number
+    // todo: rename mouseHoverX -> hoverX and hoverX -> activeX
+    @observable mouseHoverX?: number = undefined
     @action.bound onHover(hoverX: number | undefined): void {
-        this.hoverX = hoverX
+        this.mouseHoverX = hoverX
+    }
+
+    @computed get hoverX(): number | undefined {
+        return this.mouseHoverX ?? this.props.manager.annotation?.year
     }
 
     @computed private get manager(): LineChartManager {
@@ -378,7 +396,7 @@ export class LineChart
                                 : series.color
                             return (
                                 <tr
-                                    key={`${series.seriesName}-${series.color}`}
+                                    key={getSeriesKey(series)}
                                     style={{ color: textColor }}
                                 >
                                     <td>
@@ -452,7 +470,11 @@ export class LineChart
     }
 
     @computed get focusedSeriesNames(): string[] {
-        return this.hoveredSeriesName ? [this.hoveredSeriesName] : []
+        const entityName =
+            this.props.manager.annotation?.entityName ??
+            this.hoveredSeriesName ??
+            undefined
+        return entityName ? [entityName] : []
     }
 
     @computed get isFocusMode(): boolean {
@@ -468,18 +490,6 @@ export class LineChart
     componentDidMount(): void {
         if (!this.manager.isExportingtoSvgOrPng) this.runFancyIntroAnimation()
         exposeInstanceOnWindow(this)
-    }
-
-    private runFancyIntroAnimation(): void {
-        this.animSelection = select(this.base.current)
-            .selectAll("clipPath > rect")
-            .attr("width", 0)
-        this.animSelection
-            .transition()
-            .duration(800)
-            .ease(easeLinear)
-            .attr("width", this.bounds.width)
-            .on("end", () => this.forceUpdate()) // Important in case bounds changes during transition
     }
 
     componentWillUnmount(): void {
@@ -498,6 +508,27 @@ export class LineChart
         return this.bounds.right - (this.legendDimensions?.width || 0)
     }
 
+    @computed get clipPathBounds(): Bounds {
+        const { dualAxis, bounds } = this
+        return bounds.set({ x: dualAxis.innerBounds.x }).expand(10)
+    }
+
+    @computed get clipPath(): { id: string; element: JSX.Element } {
+        return makeClipPath(this.renderUid, this.clipPathBounds)
+    }
+
+    private runFancyIntroAnimation(): void {
+        this.animSelection = select(this.base.current)
+            .selectAll("clipPath > rect")
+            .attr("width", 0)
+        this.animSelection
+            .transition()
+            .duration(800)
+            .ease(easeLinear)
+            .attr("width", this.clipPathBounds.width)
+            .on("end", () => this.forceUpdate()) // Important in case bounds changes during transition
+    }
+
     @computed private get legendDimensions(): LineLegend | undefined {
         return this.manager.hideLegend
             ? undefined
@@ -514,18 +545,12 @@ export class LineChart
                 />
             )
 
-        const { manager, tooltip, dualAxis, hoverX, renderUid, bounds } = this
+        const { manager, tooltip, dualAxis, hoverX, clipPath } = this
         const { horizontalAxis, verticalAxis } = dualAxis
 
         const comparisonLines = manager.comparisonLines || []
 
         // The tiny bit of extra space in the clippath is to ensure circles centered on the very edge are still fully visible
-        const clipPath = makeClipPath(renderUid, {
-            x: dualAxis.innerBounds.x - 10,
-            y: bounds.y - 18, // subtract 18 to reverse the padding after header in captioned chart
-            width: bounds.width + 10,
-            height: bounds.height * 2,
-        })
         return (
             <g ref={this.base} className="LineChart">
                 {clipPath.element}
@@ -559,7 +584,7 @@ export class LineChart
 
                             return (
                                 <circle
-                                    key={`${series.seriesName}-${series.color}`}
+                                    key={getSeriesKey(series)}
                                     cx={horizontalAxis.place(value.x)}
                                     cy={verticalAxis.place(value.y)}
                                     r={4}
@@ -630,7 +655,13 @@ export class LineChart
     }
 
     @computed get seriesStrategy(): SeriesStrategy {
-        return autoDetectSeriesStrategy(this.manager)
+        const hasNormalAndProjectedSeries =
+            this.yColumns.some((col) => col.isProjection) &&
+            this.yColumns.some((col) => !col.isProjection)
+        return autoDetectSeriesStrategy(
+            this.manager,
+            hasNormalAndProjectedSeries
+        )
     }
 
     @computed get isLogScale(): boolean {
@@ -676,8 +707,8 @@ export class LineChart
                     placedPoints: series.points.map(
                         (point) =>
                             new PointVector(
-                                Math.round(horizontalAxis.place(point.x)),
-                                Math.round(verticalAxis.place(point.y))
+                                round(horizontalAxis.place(point.x), 1),
+                                round(verticalAxis.place(point.y), 1)
                             )
                     ),
                 }
@@ -707,29 +738,12 @@ export class LineChart
         })
     }
 
-    // todo: Refactor
-    @computed private get dualAxis(): DualAxis {
-        return new DualAxis({
-            bounds: this.bounds.padRight(
-                this.legendDimensions
-                    ? this.legendDimensions.width
-                    : this.defaultRightPadding
-            ),
-            verticalAxis: this.verticalAxisPart,
-            horizontalAxis: this.horizontalAxisPart,
-        })
-    }
-
-    @computed get verticalAxis(): VerticalAxis {
-        return this.dualAxis.verticalAxis
+    @computed private get xAxisConfig(): AxisConfig {
+        return new AxisConfig(this.manager.xAxisConfig, this)
     }
 
     @computed private get horizontalAxisPart(): HorizontalAxis {
-        const { manager } = this
-        const axisConfig =
-            manager.xAxis ?? new AxisConfig(manager.xAxisConfig, this)
-        if (manager.hideXAxis) axisConfig.hideAxis = true
-        const axis = axisConfig.toHorizontalAxis()
+        const axis = this.xAxisConfig.toHorizontalAxis()
         axis.updateDomainPreservingUserSettings(
             this.transformedTable.timeDomainFor(this.yColumnSlugs)
         )
@@ -741,14 +755,12 @@ export class LineChart
     }
 
     @computed private get yAxisConfig(): AxisConfig {
-        const { manager } = this
-        return manager.yAxis ?? new AxisConfig(manager.yAxisConfig, this)
+        // TODO: enable nice axis ticks for linear scales
+        return new AxisConfig(this.manager.yAxisConfig, this)
     }
 
     @computed private get verticalAxisPart(): VerticalAxis {
-        const { manager } = this
         const axisConfig = this.yAxisConfig
-        if (manager.hideYAxis) axisConfig.hideAxis = true
         const yDomain = this.transformedTable.domainFor(this.yColumnSlugs)
         const domain = axisConfig.domain
         const axis = axisConfig.toVerticalAxis()
@@ -762,5 +774,25 @@ export class LineChart
         axis.label = ""
         axis.formatColumn = this.formatColumn
         return axis
+    }
+
+    @computed private get dualAxis(): DualAxis {
+        return new DualAxis({
+            bounds: this.bounds.padRight(
+                this.legendDimensions
+                    ? this.legendDimensions.width
+                    : this.defaultRightPadding
+            ),
+            verticalAxis: this.verticalAxisPart,
+            horizontalAxis: this.horizontalAxisPart,
+        })
+    }
+
+    @computed get yAxis(): VerticalAxis {
+        return this.dualAxis.verticalAxis
+    }
+
+    @computed get xAxis(): HorizontalAxis {
+        return this.dualAxis.horizontalAxis
     }
 }

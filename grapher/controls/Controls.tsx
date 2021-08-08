@@ -13,7 +13,10 @@ import { faDownload } from "@fortawesome/free-solid-svg-icons/faDownload"
 import { faShareAlt } from "@fortawesome/free-solid-svg-icons/faShareAlt"
 import { faExpand } from "@fortawesome/free-solid-svg-icons/faExpand"
 import { faExternalLinkAlt } from "@fortawesome/free-solid-svg-icons/faExternalLinkAlt"
+import { faChevronDown } from "@fortawesome/free-solid-svg-icons/faChevronDown"
 import {
+    FacetAxisDomain,
+    FacetStrategy,
     GrapherTabOption,
     HighlightToggleConfig,
     RelatedQuestionsConfig,
@@ -22,6 +25,10 @@ import {
 import { ShareMenu, ShareMenuManager } from "./ShareMenu"
 import { TimelineController } from "../timeline/TimelineController"
 import { SelectionArray } from "../selection/SelectionArray"
+import { AxisConfig } from "../axis/AxisConfig"
+import { Tippy } from "../chart/Tippy"
+import { Bounds } from "../../clientUtils/Bounds"
+import classnames from "classnames"
 
 export interface HighlightToggleManager {
     highlightToggle?: HighlightToggleConfig
@@ -123,6 +130,41 @@ export class AbsRelToggle extends React.Component<{
     }
 }
 
+export interface FacetYDomainToggleManager {
+    yAxis?: AxisConfig
+}
+
+@observer
+export class FacetYDomainToggle extends React.Component<{
+    manager: FacetYDomainToggleManager
+}> {
+    @action.bound onToggle(): void {
+        this.props.manager.yAxis!.facetDomain = this.isYDomainShared
+            ? FacetAxisDomain.independent
+            : FacetAxisDomain.shared
+    }
+
+    @computed get isYDomainShared(): boolean {
+        const facetDomain =
+            this.props.manager.yAxis!.facetDomain || FacetAxisDomain.shared
+        return facetDomain === FacetAxisDomain.shared
+    }
+
+    render(): JSX.Element {
+        return (
+            <label className="clickable">
+                <input
+                    type="checkbox"
+                    checked={this.isYDomainShared}
+                    onChange={this.onToggle}
+                    data-track-note="chart-facet-ydomain-toggle"
+                />{" "}
+                &nbsp;Uniform y-axis
+            </label>
+        )
+    }
+}
+
 export interface ZoomToggleManager {
     zoomToSelection?: boolean
 }
@@ -192,6 +234,125 @@ export class FilterSmallCountriesToggle extends React.Component<{
                 &nbsp;{label}
             </label>
         )
+    }
+}
+
+export interface FacetStrategyDropdownManager {
+    availableFacetStrategies: FacetStrategy[]
+    facetStrategy?: FacetStrategy
+    hideFacetControl?: boolean
+    entityType?: string
+}
+
+// A drop-down button that, when clicked, shows a hovering visual display
+// indicating the faceting options.
+@observer
+export class FacetStrategyDropdown extends React.Component<{
+    manager: FacetStrategyDropdownManager
+}> {
+    render(): JSX.Element {
+        return (
+            <Tippy
+                content={this.content}
+                interactive={true}
+                trigger={"click"}
+                placement={"bottom-start"}
+                arrow={false}
+            >
+                <div
+                    className="FacetStrategyDropdown"
+                    style={{ width: this.dropDownWidth }}
+                >
+                    {this.facetStrategyLabels[this.facetStrategy]}
+                    <div>
+                        <FontAwesomeIcon icon={faChevronDown} />
+                    </div>
+                </div>
+            </Tippy>
+        )
+    }
+
+    @computed get facetStrategyLabels(): { [key in FacetStrategy]: string } {
+        // arbitrary entity names can be too long for our current design; as a trade-off,
+        // we accept them only if they are not too long, otherwise we just use "item"
+        const entityType = this.props.manager.entityType ?? "country"
+        const entityLabel =
+            entityType.length > "country".length ? "item" : entityType
+
+        return {
+            [FacetStrategy.none]: "All together",
+            [FacetStrategy.entity]: `Split by ${entityLabel}`,
+            [FacetStrategy.metric]: "Split by metric",
+        }
+    }
+
+    @computed get strategies(): FacetStrategy[] {
+        return (
+            this.props.manager.availableFacetStrategies || [
+                FacetStrategy.none,
+                FacetStrategy.entity,
+                FacetStrategy.metric,
+            ]
+        )
+    }
+
+    @computed get dropDownWidth(): string {
+        const maxWidth = Math.max(
+            ...this.strategies.map(
+                (s) =>
+                    Bounds.forText(this.facetStrategyLabels[s], {
+                        fontSize: 12,
+                    }).width
+            )
+        )
+        return `${maxWidth + 45}px` // leave room for the chevron
+    }
+
+    // A hovering visual display giving options to be selected from
+    @computed get content(): JSX.Element {
+        const parts = this.strategies.map((value: FacetStrategy) => {
+            const label = this.facetStrategyLabels[value]
+            const children =
+                value === FacetStrategy.none ? (
+                    // a single solid block
+                    <div className="FacetStrategyPreview-none-child"></div>
+                ) : (
+                    // a 3x2 grid of squares
+                    <>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                        <div className="FacetStrategyPreview-split-child"></div>
+                    </>
+                )
+            return (
+                <div
+                    className={classnames({
+                        FacetStrategyOption: true,
+                        selected: value === this.facetStrategy,
+                    })}
+                    key={value.toString()}
+                >
+                    <a
+                        onClick={(): void => {
+                            this.props.manager.facetStrategy = value
+                        }}
+                    >
+                        <div className="FacetStrategyLabel">{label}</div>
+                        <div className={`FacetStrategyPreview-parent`}>
+                            {children}
+                        </div>
+                    </a>
+                </div>
+            )
+        })
+        return <div className="FacetStrategyFloat">{parts}</div>
+    }
+
+    @computed get facetStrategy(): FacetStrategy {
+        return this.props.manager.facetStrategy || FacetStrategy.none
     }
 }
 

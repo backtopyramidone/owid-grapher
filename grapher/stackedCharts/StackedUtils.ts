@@ -5,7 +5,7 @@ import { StackedPointPositionType, StackedSeries } from "./StackedConstants"
 // Todo: use a lib?
 export const stackSeries = <PositionType extends StackedPointPositionType>(
     seriesArr: readonly StackedSeries<PositionType>[]
-) => {
+): readonly StackedSeries<PositionType>[] => {
     seriesArr.forEach((series, seriesIndex) => {
         if (!seriesIndex) return // The first series does not need to be shifted
         series.points.forEach((point, pointIndex) => {
@@ -19,7 +19,7 @@ export const stackSeries = <PositionType extends StackedPointPositionType>(
 }
 
 // Adds a Y = 0 value for each missing x value (where X is usually Time)
-export const withZeroesAsInterpolatedPoints = <
+export const withMissingValuesAsZeroes = <
     PositionType extends StackedPointPositionType
 >(
     seriesArr: readonly StackedSeries<PositionType>[]
@@ -38,7 +38,9 @@ export const withZeroesAsInterpolatedPoints = <
             points: allXValuesSorted.map((position) => {
                 const point = pointsByPosition[position]
                 const value = point?.value ?? 0
+                const time = point?.time ?? 0
                 return {
+                    time,
                     position,
                     value,
                     valueOffset: 0,

@@ -11,7 +11,7 @@ import {
 } from "../explorer/ExplorerControls"
 import ReactDOM from "react-dom"
 import { ExplorerProgram } from "../explorer/ExplorerProgram"
-import { SerializedGridProgram } from "../clientUtils/owidTypes"
+import { ColumnSlug, SerializedGridProgram } from "../clientUtils/owidTypes"
 import {
     Grapher,
     GrapherManager,
@@ -43,11 +43,7 @@ import {
 } from "./ExplorerConstants"
 import { EntityPickerManager } from "../grapher/controls/entityPicker/EntityPickerConstants"
 import { SelectionArray } from "../grapher/selection/SelectionArray"
-import {
-    ColumnSlug,
-    SortOrder,
-    TableSlug,
-} from "../coreTable/CoreTableConstants"
+import { SortOrder, TableSlug } from "../coreTable/CoreTableConstants"
 import { isNotErrorValue } from "../coreTable/ErrorValues"
 import { Bounds, DEFAULT_BOUNDS } from "../clientUtils/Bounds"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -72,6 +68,7 @@ export interface ExplorerProps extends SerializedGridProgram {
     queryStr?: string
     isEmbeddedInAnOwidPage?: boolean
     isInStandalonePage?: boolean
+    isPreview?: boolean
     canonicalUrl?: string
     selection?: SelectionArray
 }
@@ -90,6 +87,7 @@ const renderLivePreviewVersion = (props: ExplorerProps) => {
                 {...newProps}
                 queryStr={window.location.search}
                 key={Date.now()}
+                isPreview={true}
             />,
             document.getElementById(ExplorerContainerId)
         )
@@ -248,10 +246,19 @@ export class Explorer
             ...this.persistedGrapherQueryParamsBySelectedRow.get(
                 this.explorerProgram.currentlySelectedGrapherRow
             ),
+            region: oldGrapherParams.region,
             time: this.grapher.timeParam,
         }
 
+        const previousTab = this.grapher.tab
+
         this.updateGrapherFromExplorer()
+
+        // preserve the previous tab if that's still available in the new view;
+        // and use the first tab otherwise
+        newGrapherParams.tab = this.grapher.availableTabs.includes(previousTab)
+            ? previousTab
+            : this.grapher.availableTabs[0]
 
         this.grapher.populateFromQueryParams(newGrapherParams)
     }
@@ -281,6 +288,7 @@ export class Explorer
             tableSlug,
             yScaleToggle,
             yAxisMin,
+            facetYDomain,
         } = grapherConfigFromExplorer
 
         const hasGrapherId = grapherId && isNotErrorValue(grapherId)
@@ -300,6 +308,9 @@ export class Explorer
         grapher.reset()
         grapher.yAxis.canChangeScaleType = yScaleToggle
         grapher.yAxis.min = yAxisMin
+        if (facetYDomain) {
+            grapher.yAxis.facetDomain = facetYDomain
+        }
         grapher.updateFromObject(config)
 
         if (!hasGrapherId) {
@@ -363,6 +374,7 @@ export class Explorer
     }
 
     @computed get currentUrl(): Url {
+        if (this.props.isPreview) return Url.fromQueryParams(this.queryParams)
         return Url.fromURL(this.baseUrl).setQueryParams(this.queryParams)
     }
 
@@ -438,14 +450,12 @@ export class Explorer
         return this.explorerProgram.downloadDataLink
     }
 
-    @observable private grapherContainerRef: React.RefObject<
-        HTMLDivElement
-    > = React.createRef()
+    @observable
+    private grapherContainerRef: React.RefObject<HTMLDivElement> = React.createRef()
 
     @observable.ref private grapherBounds = DEFAULT_BOUNDS
-    @observable.ref private grapherRef: React.RefObject<
-        Grapher
-    > = React.createRef()
+    @observable.ref
+    private grapherRef: React.RefObject<Grapher> = React.createRef()
 
     private renderControlBar() {
         return (

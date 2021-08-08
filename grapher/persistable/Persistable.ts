@@ -1,4 +1,5 @@
 import { toJS } from "mobx"
+import { isEqual } from "../../clientUtils/Util"
 
 // Any classes that the user can edit, save, and then rehydrate should implement this interface
 export interface Persistable {
@@ -37,7 +38,7 @@ export function objectWithPersistablesToObject<T>(
 
 // Basically does an Object.assign, except if the target is a Persistable, will call updateFromObject on
 // that Persistable. It does not recurse. Will only update top level Persistables.
-export function updatePersistables(target: any, obj: any) {
+export function updatePersistables(target: any, obj: any): void {
     if (obj === undefined) return
     for (const key in target) {
         if (key in obj) {
@@ -68,9 +69,9 @@ export function deleteRuntimeAndUnchangedProps<T>(
             return
         }
 
-        const currentValue = JSON.stringify(obj[key])
-        const defaultValue = JSON.stringify(defaultObj[key])
-        if (currentValue === defaultValue) {
+        const currentValue = obj[key]
+        const defaultValue = defaultObj[key]
+        if (isEqual(currentValue, defaultValue)) {
             // Don't persist any values that weren't changed from the default
             delete obj[key]
         }

@@ -12,13 +12,9 @@ import {
     BASE_DIR,
     WORDPRESS_DIR,
 } from "../settings/serverSettings"
-import { extractFormattingOptions } from "./formatting"
-import { LongFormPage } from "../site/LongFormPage"
 
 import {
-    renderToHtmlPage,
     renderFrontPage,
-    renderSubscribePage,
     renderBlogByPageNum,
     renderChartsPage,
     renderMenuJson,
@@ -30,6 +26,7 @@ import {
     renderNotFoundPage,
     renderCountryProfile,
     flushCache as siteBakingFlushCache,
+    renderPost,
 } from "../baker/siteRenderers"
 import {
     bakeGrapherUrls,
@@ -37,19 +34,17 @@ import {
     GrapherExports,
 } from "../baker/GrapherBakingUtils"
 import { makeSitemap } from "../baker/sitemap"
-import * as React from "react"
 import { Post } from "../db/model/Post"
 import { bakeCountries } from "../baker/countryProfiles"
 import { countries } from "../clientUtils/countries"
 import { execWrapper } from "../db/execWrapper"
 import { log } from "./slackLog"
 import { countryProfileSpecs } from "../site/countryProfileProjects"
-import { ExplorerAdminServer } from "../explorerAdmin/ExplorerAdminServer"
+import { ExplorerAdminServer } from "../explorerAdminServer/ExplorerAdminServer"
 import { getRedirects } from "./redirects"
 import { bakeAllChangedGrapherPagesVariablesPngSvgAndDeleteRemovedGraphers } from "./GrapherBaker"
 import { EXPLORERS_ROUTE_FOLDER } from "../explorer/ExplorerConstants"
 import { bakeEmbedSnippet } from "../site/webpackUtils"
-import { formatPost } from "./formatWordpressPost"
 import { FullPost } from "../clientUtils/owidTypes"
 import { GIT_CMS_DIR } from "../gitCms/GitCmsConstants"
 
@@ -127,21 +122,7 @@ export class SiteBaker {
 
     // Bake an individual post/page
     private async bakePost(post: FullPost) {
-        const pageType = await wpdb.getPageType(post)
-        const formattingOptions = extractFormattingOptions(post.content)
-        const formatted = await formatPost(
-            post,
-            formattingOptions,
-            this.grapherExports
-        )
-        const html = renderToHtmlPage(
-            <LongFormPage
-                pageType={pageType}
-                post={formatted}
-                formattingOptions={formattingOptions}
-                baseUrl={this.baseUrl}
-            />
-        )
+        const html = await renderPost(post, this.baseUrl, this.grapherExports)
 
         const outPath = path.join(this.bakedSiteDir, `${post.slug}.html`)
         await fs.mkdirp(path.dirname(outPath))
@@ -164,7 +145,6 @@ export class SiteBaker {
                     !path.startsWith("grapher") &&
                     !path.startsWith("countries") &&
                     !path.startsWith("country") &&
-                    !path.startsWith("subscribe") &&
                     !path.startsWith("blog") &&
                     !path.startsWith("entries-by-year") &&
                     !path.startsWith("explore") &&
@@ -213,10 +193,6 @@ export class SiteBaker {
         await this.stageWrite(
             `${this.bakedSiteDir}/index.html`,
             await renderFrontPage()
-        )
-        await this.stageWrite(
-            `${this.bakedSiteDir}/subscribe.html`,
-            await renderSubscribePage()
         )
         await this.stageWrite(
             `${this.bakedSiteDir}/donate.html`,

@@ -106,7 +106,7 @@ export class TextField extends React.Component<TextFieldProps> {
     }
 }
 
-class TextAreaField extends React.Component<TextFieldProps> {
+export class TextAreaField extends React.Component<TextFieldProps> {
     @bind onChange(ev: React.FormEvent<HTMLTextAreaElement>) {
         const value = ev.currentTarget.value
         this.props.onValue(value)
@@ -367,9 +367,7 @@ interface NumericSelectFieldProps {
     helpText?: string
 }
 
-export class NumericSelectField extends React.Component<
-    NumericSelectFieldProps
-> {
+export class NumericSelectField extends React.Component<NumericSelectFieldProps> {
     render() {
         const props = {
             ...this.props,
@@ -401,7 +399,7 @@ export class Toggle extends React.Component<ToggleProps> {
 
     render() {
         const { props } = this
-        const passthroughProps = pick(props, ["title", "disabled"]) as any
+        const passthroughProps = pick(props, ["label", "disabled"])
 
         return (
             <div className="form-check">
