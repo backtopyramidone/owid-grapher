@@ -21,7 +21,6 @@ import {
 } from "../clientUtils/Util"
 import { isPresent } from "../clientUtils/isPresent"
 import {
-    ColumnSlug,
     Integer,
     Time,
     TransformType,
@@ -54,6 +53,7 @@ import {
     InterpolationProvider,
 } from "./CoreTableUtils"
 import { CoreColumn, ColumnTypeMap } from "./CoreTableColumns"
+import { ColumnSlug } from "../clientUtils/owidTypes"
 
 // An OwidTable is a subset of Table. An OwidTable always has EntityName, EntityCode, EntityId, and Time columns,
 // and value column(s). Whether or not we need in the long run is uncertain and it may just be a stepping stone
@@ -65,8 +65,8 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
         return Array.from(this.availableEntityNameSet)
     }
 
-    @imemo get availableEntityNameSet(): Set<any> {
-        return new Set(this.entityNameColumn.uniqValues)
+    @imemo get availableEntityNameSet(): Set<string> {
+        return new Set<string>(this.entityNameColumn.uniqValues)
     }
 
     // todo: can we remove at some point?

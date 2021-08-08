@@ -8,6 +8,7 @@ import {
 import { Bounds } from "../../clientUtils/Bounds"
 import { ChartTypeName, FacetStrategy } from "../core/GrapherConstants"
 import { Meta } from "@storybook/react"
+import { ChartManager } from "../chart/ChartManager"
 
 // See https://storybook.js.org/docs/react/essentials/controls for Control Types
 const CSF: Meta = {
@@ -23,7 +24,7 @@ export const OneMetricOneCountryPerChart = (): JSX.Element => {
     const table = SynthesizeGDPTable({
         entityCount: 4,
     })
-    const manager = {
+    const manager: ChartManager = {
         table,
         selection: table.availableEntityNames,
         yColumnSlug: SampleColumnSlugs.GDP,
@@ -69,7 +70,7 @@ export const OneChartPerMetric = (): JSX.Element => {
                 bounds={bounds}
                 chartTypeName={ChartTypeName.LineChart}
                 manager={{
-                    facetStrategy: FacetStrategy.column,
+                    facetStrategy: FacetStrategy.metric,
                     yColumnSlugs: table.numericColumnSlugs,
                     selection: table.availableEntityNames,
                     table,

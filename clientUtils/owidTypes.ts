@@ -1,6 +1,9 @@
 // todo: remove when we ditch Year and YearIsDay
 export const EPOCH_DATE = "2020-01-21"
 
+/** The "plot" is a chart without any header, footer or controls */
+export const IDEAL_PLOT_ASPECT_RATIO: number = 1.8
+
 export interface Box {
     x: number
     y: number
@@ -13,6 +16,18 @@ export type Integer = number
 export enum SortOrder {
     asc = "asc",
     desc = "desc",
+}
+
+export enum SortBy {
+    entityName = "entityName",
+    column = "column",
+    total = "total",
+}
+
+export interface SortConfig {
+    sortBy?: SortBy
+    sortOrder?: SortOrder
+    sortColumnSlug?: string
 }
 
 export type Year = Integer
@@ -72,6 +87,7 @@ export enum SubNavId {
     co2 = "co2",
     energy = "energy",
     forests = "forests",
+    water = "water",
 }
 
 export interface FormattingOptions {
@@ -82,7 +98,35 @@ export interface FormattingOptions {
     subnavCurrentId?: string
     raw?: boolean
     hideDonateFooter?: boolean
+    footnotes?: boolean
+}
+
+export interface KeyValueProps {
     [key: string]: string | boolean | undefined
+}
+
+export interface DataValueQueryArgs {
+    variableId?: number
+    entityId?: number
+    chartId?: number
+    year?: number
+}
+
+export interface DataValueConfiguration {
+    queryArgs: DataValueQueryArgs
+    template: string
+}
+
+export interface DataValueResult {
+    value: number
+    year: number
+    unit?: string
+    entityName: string
+}
+
+export interface DataValueProps extends DataValueResult {
+    formattedValue?: string
+    template: string
 }
 
 export interface GitCommit {
@@ -136,12 +180,6 @@ export interface CategoryWithEntries {
 export enum WP_PostType {
     Post = "post",
     Page = "page",
-}
-
-export enum PageType {
-    Entry = "ENTRY",
-    SubEntry = "SUBENTRY",
-    Standard = "STANDARD",
 }
 
 export interface EntryNode {
@@ -216,4 +254,48 @@ export interface DeployChange {
 export interface Deploy {
     status: DeployStatus
     changes: DeployChange[]
+}
+
+export interface Annotation {
+    entityName?: string
+    year?: number
+}
+
+export enum DimensionProperty {
+    y = "y",
+    x = "x",
+    size = "size",
+    color = "color",
+    table = "table",
+}
+
+// see CoreTableConstants.ts
+export type ColumnSlug = string // a url friendly name for a column in a table. cannot have spaces
+
+export enum Position {
+    top = "top",
+    right = "right",
+    bottom = "bottom",
+    left = "left",
+}
+
+export type PositionMap<Value> = {
+    [key in Position]?: Value
+}
+
+export enum HorizontalAlign {
+    left = "left",
+    center = "center",
+    right = "right",
+}
+
+export enum VerticalAlign {
+    top = "top",
+    middle = "middle",
+    bottom = "bottom",
+}
+
+export interface GridParameters {
+    rows: number
+    columns: number
 }

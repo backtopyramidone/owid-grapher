@@ -131,7 +131,7 @@ const geoBoundsFor = (projectionName: MapProjectionName): Bounds[] => {
 
         // HACK (Mispy): The path generator calculates weird bounds for Fiji (probably it wraps around the map)
         if (feature.id === "Fiji")
-            return bounds.extend({
+            return bounds.set({
                 x: bounds.right - bounds.height,
                 width: bounds.height,
             })
@@ -313,12 +313,15 @@ export class MapChart
     @computed get formatTooltipValue(): (d: number | string) => string {
         const { mapConfig, mapColumn, colorScale } = this
 
-        const customLabels = mapConfig.tooltipUseCustomLabels
-            ? colorScale.customNumericLabels
-            : []
         return (d: number | string): string => {
             if (isString(d)) return d
-            else return customLabels[d] ?? mapColumn?.formatValueLong(d) ?? ""
+            else if (mapConfig.tooltipUseCustomLabels) {
+                // Find the bin (and its label) that this value belongs to
+                const bin = colorScale.getBinForValue(d)
+                const label = bin?.label
+                if (label !== undefined && label !== "") return label
+            }
+            return mapColumn?.formatValueLong(d) ?? ""
         }
     }
 
@@ -462,7 +465,7 @@ export class MapChart
 
         if (focusBracket) return focusBracket
 
-        if (focusValue)
+        if (focusValue !== undefined)
             return numericLegendData.find((bin) => bin.contains(focusValue))
 
         return undefined
@@ -474,7 +477,7 @@ export class MapChart
         if (focusBracket && focusBracket instanceof CategoricalBin)
             return focusBracket
 
-        if (focusValue)
+        if (focusValue !== undefined)
             return categoricalLegendData.find((bin) => bin.contains(focusValue))
 
         return undefined
@@ -789,29 +792,29 @@ class ChoroplethMap extends React.Component<ChoroplethMapProps> {
         if (this.hoverEnterFeature) return
 
         const { featuresInProjection } = this
-        const mouse = getRelativeMouse(
-            this.base.current!.querySelector(".subunits"),
-            ev
-        )
+        const subunits = this.base.current?.querySelector(".subunits")
+        if (subunits) {
+            const mouse = getRelativeMouse(subunits, ev)
 
-        const featuresWithDistance = featuresInProjection.map((feature) => {
-            return {
-                feature,
-                distance: PointVector.distance(feature.center, mouse),
+            const featuresWithDistance = featuresInProjection.map((feature) => {
+                return {
+                    feature,
+                    distance: PointVector.distance(feature.center, mouse),
+                }
+            })
+
+            const feature = minBy(featuresWithDistance, (d) => d.distance)
+
+            if (feature && feature.distance < 20) {
+                if (feature.feature !== this.hoverNearbyFeature) {
+                    this.hoverNearbyFeature = feature.feature
+                    this.props.onHover(feature.feature.geo, ev)
+                }
+            } else {
+                this.hoverNearbyFeature = undefined
+                this.props.onHoverStop()
             }
-        })
-
-        const feature = minBy(featuresWithDistance, (d) => d.distance)
-
-        if (feature && feature.distance < 20) {
-            if (feature.feature !== this.hoverNearbyFeature) {
-                this.hoverNearbyFeature = feature.feature
-                this.props.onHover(feature.feature.geo, ev)
-            }
-        } else {
-            this.hoverNearbyFeature = undefined
-            this.props.onHoverStop()
-        }
+        } else console.error("subunits was falsy")
     }
 
     @action.bound private onMouseEnter(

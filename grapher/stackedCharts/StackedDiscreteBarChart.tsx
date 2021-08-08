@@ -7,6 +7,8 @@ import {
     flatten,
     excludeUndefined,
     sortBy,
+    numberMagnitude,
+    sum,
 } from "../../clientUtils/Util"
 import { action, computed, observable } from "mobx"
 import { observer } from "mobx-react"
@@ -21,18 +23,37 @@ import { AxisConfig } from "../axis/AxisConfig"
 import { ChartInterface } from "../chart/ChartInterface"
 import { OwidTable } from "../../coreTable/OwidTable"
 import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
-import { stackSeries } from "../stackedCharts/StackedUtils"
+import {
+    stackSeries,
+    withMissingValuesAsZeroes,
+} from "../stackedCharts/StackedUtils"
 import { ChartManager } from "../chart/ChartManager"
-import { Color, Time } from "../../clientUtils/owidTypes"
+import {
+    Color,
+    SortOrder,
+    Time,
+    SortBy,
+    SortConfig,
+    HorizontalAlign,
+} from "../../clientUtils/owidTypes"
 import { StackedPoint, StackedSeries } from "./StackedConstants"
 import { ColorSchemes } from "../color/ColorSchemes"
 import { EntityName } from "../../coreTable/OwidTableConstants"
 import {
-    LegendAlign,
     HorizontalCategoricalColorLegend,
     HorizontalColorLegendManager,
 } from "../horizontalColorLegend/HorizontalColorLegends"
 import { CategoricalBin } from "../color/ColorScaleBin"
+import { CoreColumn } from "../../coreTable/CoreTableColumns"
+import { TippyIfInteractive } from "../chart/Tippy"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { faInfoCircle } from "@fortawesome/free-solid-svg-icons/faInfoCircle"
+import { isDarkColor } from "../color/ColorUtils"
+import { HorizontalAxis } from "../axis/Axis"
+import { SelectionArray } from "../selection/SelectionArray"
+import { ColorScheme } from "../color/ColorScheme"
+import { NodeGroup } from "react-move"
+import { easeQuadOut } from "d3-ease"
 
 const labelToBarPadding = 5
 
@@ -45,10 +66,33 @@ interface Item {
     bars: Bar[]
 }
 
+interface PlacedItem extends Item {
+    yPosition: number
+}
+
 interface Bar {
     color: Color
     seriesName: string
+    columnSlug: string
     point: StackedPoint<EntityName>
+}
+
+interface TooltipProps extends StackedBarChartContext {
+    label: string
+    bars: Bar[]
+    highlightedSeriesName: string | undefined
+}
+
+interface StackedBarChartContext {
+    yAxis: HorizontalAxis
+    targetTime?: number
+    timeColumn: CoreColumn
+    formatColumn: CoreColumn
+    focusSeriesName?: string
+    barHeight: number
+    x0: number
+    baseFontSize: number
+    isInteractive: boolean
 }
 
 @observer
@@ -60,7 +104,7 @@ export class StackedDiscreteBarChart
     implements ChartInterface, HorizontalColorLegendManager {
     base: React.RefObject<SVGGElement> = React.createRef()
 
-    transformTable(table: OwidTable) {
+    transformTable(table: OwidTable): OwidTable {
         if (!this.yColumnSlugs.length) return table
 
         table = table.filterByEntityNames(
@@ -85,28 +129,32 @@ export class StackedDiscreteBarChart
         return table
     }
 
+    @computed get sortConfig(): SortConfig {
+        return this.manager.sortConfig ?? {}
+    }
+
     @observable focusSeriesName?: SeriesName
 
-    @computed get inputTable() {
+    @computed get inputTable(): OwidTable {
         return this.manager.table
     }
 
-    @computed get transformedTable() {
+    @computed get transformedTable(): OwidTable {
         return (
             this.manager.transformedTable ??
             this.transformTable(this.inputTable)
         )
     }
 
-    @computed private get manager() {
+    @computed private get manager(): StackedDiscreteBarChartManager {
         return this.props.manager
     }
 
-    @computed private get bounds() {
+    @computed private get bounds(): Bounds {
         return (this.props.bounds ?? DEFAULT_BOUNDS).padRight(10)
     }
 
-    @computed private get baseFontSize() {
+    @computed private get baseFontSize(): number {
         return this.manager.baseFontSize ?? BASE_FONT_SIZE
     }
 
@@ -118,13 +166,13 @@ export class StackedDiscreteBarChart
     }
 
     // Account for the width of the legend
-    @computed private get labelWidth() {
+    @computed private get labelWidth(): number {
         const labels = this.items.map((item) => item.label)
         const longestLabel = maxBy(labels, (d) => d.length)
         return Bounds.forText(longestLabel, this.labelStyle).width
     }
 
-    @computed private get x0() {
+    @computed private get x0(): number {
         return 0
     }
 
@@ -147,13 +195,13 @@ export class StackedDiscreteBarChart
         return [this.bounds.left + this.labelWidth, this.bounds.right]
     }
 
-    @computed private get yAxis() {
-        return this.manager.yAxis || new AxisConfig()
+    @computed private get yAxisConfig(): AxisConfig {
+        return new AxisConfig(this.manager.yAxisConfig, this)
     }
 
-    @computed private get axis() {
+    @computed get yAxis(): HorizontalAxis {
         // NB: We use the user's YAxis options here to make the XAxis
-        const axis = this.yAxis.toHorizontalAxis()
+        const axis = this.yAxisConfig.toHorizontalAxis()
         axis.updateDomainPreservingUserSettings(this.xDomainDefault)
 
         axis.formatColumn = this.yColumns[0] // todo: does this work for columns as series?
@@ -162,19 +210,19 @@ export class StackedDiscreteBarChart
         return axis
     }
 
-    @computed private get innerBounds() {
+    @computed private get innerBounds(): Bounds {
         return this.bounds
             .padLeft(this.labelWidth)
-            .padBottom(this.axis.height)
+            .padBottom(this.yAxis.height)
             .padTop(this.legendPaddingTop)
             .padTop(this.legend.height)
     }
 
-    @computed private get selectionArray() {
+    @computed private get selectionArray(): SelectionArray {
         return makeSelectionArray(this.manager)
     }
 
-    @computed private get items(): Item[] {
+    @computed private get items(): readonly Item[] {
         const entityNames = this.selectionArray.selectedEntityNames
         const items = entityNames
             .map((entityName) => ({
@@ -187,6 +235,7 @@ export class StackedDiscreteBarChart
                         if (!point) return undefined
                         return {
                             point,
+                            columnSlug: series.columnSlug,
                             color: series.color,
                             seriesName: series.seriesName,
                         }
@@ -195,25 +244,41 @@ export class StackedDiscreteBarChart
             }))
             .filter((item) => item.bars.length)
 
-        if (this.manager.isRelativeMode) {
-            // TODO: This is more of a stopgap to prevent the chart from being super jumpy in
-            // relative mode. Once we have an option to sort by a specific metric, that'll help.
-            // Until then, we're sorting by label to prevent any jumping.
-            return sortBy(items, (item) => item.label)
-        } else {
-            return sortBy(items, (item) => {
-                const lastPoint = last(item.bars)?.point
-                if (!lastPoint) return 0
-                return lastPoint.valueOffset + lastPoint.value
-            }).reverse()
-        }
+        return items
     }
 
-    @computed private get barHeight() {
+    @computed get sortedItems(): readonly Item[] {
+        let sortByFunc: (item: Item) => number | string
+        switch (this.sortConfig.sortBy) {
+            case SortBy.entityName:
+                sortByFunc = (item: Item): string => item.label
+                break
+            case SortBy.column:
+                const sortColumnSlug = this.sortConfig.sortColumnSlug
+                sortByFunc = (item: Item): number =>
+                    item.bars.find((b) => b.columnSlug === sortColumnSlug)
+                        ?.point.value ?? 0
+                break
+            default:
+            case SortBy.total:
+                sortByFunc = (item: Item): number => {
+                    const lastPoint = last(item.bars)?.point
+                    if (!lastPoint) return 0
+                    return lastPoint.valueOffset + lastPoint.value
+                }
+        }
+        const sortedItems = sortBy(this.items, sortByFunc)
+        const sortOrder = this.sortConfig.sortOrder ?? SortOrder.desc
+        if (sortOrder === SortOrder.desc) sortedItems.reverse()
+
+        return sortedItems
+    }
+
+    @computed private get barHeight(): number {
         return (0.8 * this.innerBounds.height) / this.items.length
     }
 
-    @computed private get barSpacing() {
+    @computed private get barSpacing(): number {
         return this.innerBounds.height / this.items.length - this.barHeight
     }
 
@@ -235,8 +300,8 @@ export class StackedDiscreteBarChart
         return this.bounds.width
     }
 
-    @computed get legendAlign(): LegendAlign {
-        return LegendAlign.left
+    @computed get legendAlign(): HorizontalAlign {
+        return HorizontalAlign.left
     }
 
     @computed get fontSize(): number {
@@ -254,11 +319,11 @@ export class StackedDiscreteBarChart
         })
     }
 
-    @action.bound onLegendMouseOver(bin: CategoricalBin) {
+    @action.bound onLegendMouseOver(bin: CategoricalBin): void {
         this.focusSeriesName = bin.value
     }
 
-    @action.bound onLegendMouseLeave() {
+    @action.bound onLegendMouseLeave(): void {
         this.focusSeriesName = undefined
     }
 
@@ -266,7 +331,11 @@ export class StackedDiscreteBarChart
         return new HorizontalCategoricalColorLegend({ manager: this })
     }
 
-    render() {
+    @computed private get formatColumn(): CoreColumn {
+        return this.yColumns[0]
+    }
+
+    render(): JSX.Element {
         if (this.failMessage)
             return (
                 <NoDataModal
@@ -276,9 +345,30 @@ export class StackedDiscreteBarChart
                 />
             )
 
-        const { bounds, axis, innerBounds, barHeight, barSpacing } = this
+        const { bounds, yAxis, innerBounds, barHeight, barSpacing } = this
 
-        let yOffset = innerBounds.top + barHeight / 2
+        const chartContext: StackedBarChartContext = {
+            yAxis,
+            targetTime: this.manager.endTime,
+            timeColumn: this.inputTable.timeColumn,
+            formatColumn: this.formatColumn,
+            barHeight: this.barHeight,
+            focusSeriesName: this.focusSeriesName,
+            x0: this.x0,
+            baseFontSize: this.baseFontSize,
+            isInteractive: !this.manager.isExportingtoSvgOrPng,
+        }
+
+        const yOffset = innerBounds.top + barHeight / 2
+        const placedItems = this.sortedItems.map((d, i) => ({
+            yPosition: yOffset + (barHeight + barSpacing) * i,
+            ...d,
+        }))
+
+        const handlePositionUpdate = (d: PlacedItem) => ({
+            translateY: [d.yPosition],
+            timing: { duration: 350, ease: easeQuadOut },
+        })
 
         return (
             <g ref={this.base} className="StackedDiscreteBarChart">
@@ -292,77 +382,344 @@ export class StackedDiscreteBarChart
                 />
                 <HorizontalAxisComponent
                     bounds={bounds}
-                    axis={axis}
+                    axis={yAxis}
                     axisPosition={innerBounds.bottom}
                 />
                 <HorizontalAxisGridLines
-                    horizontalAxis={axis}
+                    horizontalAxis={yAxis}
                     bounds={innerBounds}
                 />
                 <HorizontalCategoricalColorLegend manager={this} />
-                {this.items.map(({ label, bars }) => {
-                    // Using transforms for positioning to enable better (subpixel) transitions
-                    // Width transitions don't work well on iOS Safari – they get interrupted and
-                    // it appears very slow. Also be careful with negative bar charts.
-                    const result = (
-                        <g
-                            key={label}
-                            className="bar"
-                            transform={`translate(0, ${yOffset})`}
-                        >
-                            <text
-                                x={0}
-                                y={0}
-                                transform={`translate(${
-                                    axis.place(this.x0) - labelToBarPadding
-                                }, 0)`}
-                                fill="#555"
-                                dominantBaseline="middle"
-                                textAnchor="end"
-                                {...this.labelStyle}
-                            >
-                                {label}
-                            </text>
-                            {bars.map(({ point, color, seriesName }) => {
-                                const isFaint =
-                                    this.focusSeriesName !== undefined &&
-                                    this.focusSeriesName !== seriesName
-                                const barX = axis.place(
-                                    this.x0 + point.valueOffset
-                                )
-                                const barWidth =
-                                    axis.place(point.value) -
-                                    axis.place(this.x0)
+                <NodeGroup
+                    data={placedItems}
+                    keyAccessor={(d: PlacedItem) => d.label}
+                    start={handlePositionUpdate}
+                    update={handlePositionUpdate}
+                >
+                    {(nodes) => (
+                        <g>
+                            {nodes.map(({ data, state }) => {
+                                const { label, bars } = data as PlacedItem
+                                const tooltipProps = {
+                                    ...chartContext,
+                                    label,
+                                    bars,
+                                }
+
                                 return (
-                                    <rect
-                                        key={seriesName}
-                                        x={0}
-                                        y={0}
-                                        transform={`translate(${barX}, ${
-                                            -barHeight / 2
-                                        })`}
-                                        width={barWidth}
-                                        height={barHeight}
-                                        fill={color}
-                                        opacity={isFaint ? 0.1 : 0.85}
-                                        style={{
-                                            transition: "height 200ms ease",
-                                        }}
-                                    />
+                                    <g
+                                        key={label}
+                                        className="bar"
+                                        transform={`translate(0, ${state.translateY})`}
+                                    >
+                                        <TippyIfInteractive
+                                            lazy
+                                            isInteractive={
+                                                !this.manager
+                                                    .isExportingtoSvgOrPng
+                                            }
+                                            hideOnClick={false}
+                                            content={
+                                                <StackedDiscreteBarChart.Tooltip
+                                                    {...tooltipProps}
+                                                    highlightedSeriesName={
+                                                        undefined
+                                                    }
+                                                />
+                                            }
+                                        >
+                                            <text
+                                                x={0}
+                                                y={0}
+                                                transform={`translate(${
+                                                    yAxis.place(this.x0) -
+                                                    labelToBarPadding
+                                                }, 0)`}
+                                                fill="#555"
+                                                dominantBaseline="middle"
+                                                textAnchor="end"
+                                                {...this.labelStyle}
+                                            >
+                                                {label}
+                                            </text>
+                                        </TippyIfInteractive>
+                                        {bars.map((bar) => (
+                                            <StackedDiscreteBarChart.Bar
+                                                key={bar.seriesName}
+                                                bar={bar}
+                                                chartContext={chartContext}
+                                                tooltipProps={{
+                                                    ...tooltipProps,
+                                                    highlightedSeriesName:
+                                                        bar.seriesName,
+                                                }}
+                                            />
+                                        ))}
+                                    </g>
                                 )
                             })}
                         </g>
-                    )
-
-                    yOffset += barHeight + barSpacing
-
-                    return result
-                })}
+                    )}
+                </NodeGroup>
             </g>
         )
     }
 
-    @computed get failMessage() {
+    private static Bar(props: {
+        bar: Bar
+        chartContext: StackedBarChartContext
+        tooltipProps: TooltipProps
+    }): JSX.Element {
+        const { bar, chartContext, tooltipProps } = props
+        const { yAxis, formatColumn, focusSeriesName, barHeight } = chartContext
+
+        const isFaint =
+            focusSeriesName !== undefined && focusSeriesName !== bar.seriesName
+        const barX = yAxis.place(chartContext.x0 + bar.point.valueOffset)
+        const barWidth =
+            yAxis.place(bar.point.value) - yAxis.place(chartContext.x0)
+
+        // Compute how many decimal places we should show.
+        // Basically, this makes us show 2 significant digits, or no decimal places if the number
+        // is big enough already.
+        const magnitude = numberMagnitude(bar.point.value)
+        const barLabel = formatColumn.formatValueShort(bar.point.value, {
+            numDecimalPlaces: Math.max(0, -magnitude + 2),
+        })
+        const labelFontSize = 0.7 * chartContext.baseFontSize
+        const labelBounds = Bounds.forText(barLabel, {
+            fontSize: labelFontSize,
+        })
+        // Check that we have enough space to show the bar label
+        const showLabelInsideBar =
+            labelBounds.width < 0.85 * barWidth &&
+            labelBounds.height < 0.85 * barHeight
+        const labelColor = isDarkColor(bar.color) ? "#fff" : "#000"
+
+        return (
+            <TippyIfInteractive
+                lazy
+                isInteractive={chartContext.isInteractive}
+                key={bar.seriesName}
+                hideOnClick={false}
+                content={<StackedDiscreteBarChart.Tooltip {...tooltipProps} />}
+            >
+                <g>
+                    <rect
+                        x={0}
+                        y={0}
+                        transform={`translate(${barX}, ${-barHeight / 2})`}
+                        width={barWidth}
+                        height={barHeight}
+                        fill={bar.color}
+                        opacity={isFaint ? 0.1 : 0.85}
+                        style={{
+                            transition: "height 200ms ease",
+                        }}
+                    />
+                    {showLabelInsideBar && (
+                        <text
+                            x={barX + barWidth / 2}
+                            y={0}
+                            width={barWidth}
+                            height={barHeight}
+                            fill={labelColor}
+                            opacity={isFaint ? 0 : 1}
+                            fontSize={labelFontSize}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                        >
+                            {barLabel}
+                        </text>
+                    )}
+                </g>
+            </TippyIfInteractive>
+        )
+    }
+
+    private static Tooltip(props: TooltipProps): JSX.Element {
+        let hasTimeNotice = false
+        const { highlightedSeriesName } = props
+        const showTotal = !props.bars.some((bar) => bar.point.fake) // If some data is missing, don't calculate a total
+
+        const timeNoticeStyle = {
+            fontWeight: "normal",
+            color: "#707070",
+            fontSize: "0.8em",
+            whiteSpace: "nowrap",
+            paddingLeft: "8px",
+        } as React.CSSProperties
+
+        return (
+            <table
+                style={{
+                    lineHeight: "1em",
+                    whiteSpace: "normal",
+                    borderSpacing: "0.5em",
+                }}
+            >
+                <tbody>
+                    <tr>
+                        <td colSpan={4} style={{ color: "#111" }}>
+                            <strong>{props.label}</strong>
+                        </td>
+                    </tr>
+                    {props.bars.map((bar) => {
+                        const squareColor = bar.color
+                        const isHighlighted =
+                            bar.seriesName === highlightedSeriesName
+                        const isFaint =
+                            highlightedSeriesName !== null && !isHighlighted
+                        const shouldShowTimeNotice =
+                            !bar.point.fake &&
+                            bar.point.time !== props.targetTime
+                        hasTimeNotice ||= shouldShowTimeNotice
+
+                        return (
+                            <tr
+                                key={`${bar.seriesName}`}
+                                style={{
+                                    color: isHighlighted
+                                        ? "#000"
+                                        : isFaint
+                                        ? "#707070"
+                                        : "#444",
+                                    fontWeight: isHighlighted
+                                        ? "bold"
+                                        : undefined,
+                                }}
+                            >
+                                <td>
+                                    <div
+                                        style={{
+                                            width: "10px",
+                                            height: "10px",
+                                            backgroundColor: squareColor,
+                                            display: "inline-block",
+                                        }}
+                                    />
+                                </td>
+                                <td
+                                    style={{
+                                        paddingRight: "0.8em",
+                                        fontSize: "0.9em",
+                                    }}
+                                >
+                                    {bar.seriesName}
+                                </td>
+                                <td
+                                    style={{
+                                        textAlign: "right",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    {bar.point.fake
+                                        ? "No data"
+                                        : props.formatColumn.formatValueShort(
+                                              bar.point.value,
+                                              {
+                                                  noTrailingZeroes: false,
+                                              }
+                                          )}
+                                </td>
+                                {shouldShowTimeNotice && (
+                                    <td style={timeNoticeStyle}>
+                                        <span className="icon">
+                                            <FontAwesomeIcon
+                                                icon={faInfoCircle}
+                                                style={{
+                                                    marginRight: "0.25em",
+                                                }}
+                                            />{" "}
+                                        </span>
+                                        {props.timeColumn.formatValue(
+                                            bar.point.time
+                                        )}
+                                    </td>
+                                )}
+                            </tr>
+                        )
+                    })}
+                    {/* Total */}
+                    {showTotal && (
+                        <tr
+                            style={{
+                                color: "#000",
+                                fontWeight: highlightedSeriesName
+                                    ? undefined
+                                    : "bold",
+                            }}
+                        >
+                            <td />
+                            <td
+                                style={{
+                                    paddingRight: "0.8em",
+                                    fontSize: "0.9em",
+                                }}
+                            >
+                                Total
+                            </td>
+                            <td
+                                style={{
+                                    textAlign: "right",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                {props.formatColumn.formatValueShort(
+                                    sum(
+                                        props.bars.map((bar) => bar.point.value)
+                                    ),
+                                    {
+                                        noTrailingZeroes: false,
+                                    }
+                                )}
+                            </td>
+                            {/* If we're showing a time notice for some year already, then also show it for the total */}
+                            {hasTimeNotice && (
+                                <td style={timeNoticeStyle}>
+                                    <span className="icon">
+                                        <FontAwesomeIcon icon={faInfoCircle} />
+                                    </span>
+                                </td>
+                            )}
+                        </tr>
+                    )}
+                    {hasTimeNotice && (
+                        <tr>
+                            <td
+                                colSpan={4}
+                                style={{
+                                    ...timeNoticeStyle,
+                                    paddingLeft: undefined,
+                                    whiteSpace: undefined,
+                                    paddingTop: "10px",
+                                }}
+                            >
+                                <div style={{ display: "flex" }}>
+                                    <span
+                                        className="icon"
+                                        style={{ marginRight: "0.5em" }}
+                                    >
+                                        <FontAwesomeIcon icon={faInfoCircle} />{" "}
+                                    </span>
+                                    <span>
+                                        No data available for{" "}
+                                        {props.timeColumn.formatValue(
+                                            props.targetTime
+                                        )}
+                                        . Showing closest available data point
+                                        instead.
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        )
+    }
+
+    @computed get failMessage(): string {
         const column = this.yColumns[0]
 
         if (!column) return "No column to chart"
@@ -375,18 +732,18 @@ export class StackedDiscreteBarChart
             : ""
     }
 
-    @computed protected get yColumnSlugs() {
+    @computed protected get yColumnSlugs(): string[] {
         return (
             this.manager.yColumnSlugsInSelectionOrder ??
             autoDetectYColumnSlugs(this.manager)
         )
     }
 
-    @computed protected get yColumns() {
+    @computed protected get yColumns(): CoreColumn[] {
         return this.transformedTable.getColumns(this.yColumnSlugs)
     }
 
-    @computed private get colorScheme() {
+    @computed private get colorScheme(): ColorScheme {
         return (
             (this.manager.baseColorScheme
                 ? ColorSchemes[this.manager.baseColorScheme]
@@ -400,10 +757,12 @@ export class StackedDiscreteBarChart
                 .map((col, i) => {
                     return {
                         seriesName: col.displayName,
+                        columnSlug: col.slug,
                         color:
                             col.def.color ??
                             this.colorScheme.getColors(this.yColumns.length)[i],
                         points: col.owidRows.map((row) => ({
+                            time: row.time,
                             position: row.entityName,
                             value: row.value,
                             valueOffset: 0,
@@ -416,6 +775,6 @@ export class StackedDiscreteBarChart
     }
 
     @computed get series(): readonly StackedSeries<EntityName>[] {
-        return stackSeries(this.unstackedSeries)
+        return stackSeries(withMissingValuesAsZeroes(this.unstackedSeries))
     }
 }

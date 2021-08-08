@@ -19,9 +19,10 @@ import {
     getRandomNumberGenerator,
     findClosestTimeIndex,
     intersection,
-    splitArrayIntoGroupsOfN,
     getClosestTimePairs,
     differenceObj,
+    numberMagnitude,
+    urlToSlug,
 } from "./Util"
 import { SortOrder } from "./owidTypes"
 
@@ -311,6 +312,16 @@ describe(groupMap, () => {
     })
 })
 
+describe(numberMagnitude, () => {
+    it("0 has magnitude 0", () => expect(numberMagnitude(0)).toEqual(0))
+    it("1 has magnitude 1", () => expect(numberMagnitude(1)).toEqual(1))
+    it("1.1 has magnitude 1", () => expect(numberMagnitude(1.1)).toEqual(1))
+    it("-10 has magnitude 2", () => expect(numberMagnitude(-10)).toEqual(2))
+    it("11 has magnitude 2", () => expect(numberMagnitude(11)).toEqual(2))
+    it("0.02 has magnitude -1", () => expect(numberMagnitude(0.02)).toEqual(-1))
+    it("0.5 has magnitude 0", () => expect(numberMagnitude(0.5)).toEqual(0))
+})
+
 describe(roundSigFig, () => {
     it("rounds to 1 sig fig by default", () => {
         expect(roundSigFig(652)).toEqual(700)
@@ -366,16 +377,6 @@ describe(sortNumeric, () => {
                 (o) => o.a
             )
         ).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }, { a: 3 }, { a: 4 }, { a: 8 }])
-    })
-})
-
-describe(splitArrayIntoGroupsOfN, () => {
-    it("can split groups", () => {
-        expect(splitArrayIntoGroupsOfN([], 3).length).toBe(0)
-        expect(splitArrayIntoGroupsOfN([0, 1, 2, 3, 4, 5, 6], 3).length).toBe(3)
-        expect(splitArrayIntoGroupsOfN([0, 1, 2, 3, 4, 5, 6], 5).length).toBe(2)
-        expect(splitArrayIntoGroupsOfN([0, 1, 2, 3, 4, 5, 6], 7).length).toBe(1)
-        expect(splitArrayIntoGroupsOfN([0, 1, 2, 3, 4, 5, 6], 9).length).toBe(1)
     })
 })
 
@@ -463,5 +464,17 @@ describe(differenceObj, () => {
         expect(
             differenceObj({ a: 1, b: 2, c: 3 }, { a: 1, b: 3, d: 4 })
         ).toEqual({ b: 2, c: 3 })
+    })
+})
+
+describe(urlToSlug, () => {
+    const slug = "covid-vaccinations"
+    it("gets slug from full url", () => {
+        expect(urlToSlug(`https://ourworldindata.org/${slug}#anchor`)).toEqual(
+            `${slug}`
+        )
+    })
+    it("gets slug from multi-level path", () => {
+        expect(urlToSlug(`/coronavirus/${slug}`)).toEqual(`${slug}`)
     })
 })

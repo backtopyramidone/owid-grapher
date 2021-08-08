@@ -1,8 +1,16 @@
 import * as lodash from "lodash"
 import { Writable } from "stream"
 import * as db from "../db"
-import { LegacyVariableDisplayConfigInterface } from "../../clientUtils/LegacyVariableDisplayConfigInterface"
+import {
+    LegacyChartDimensionInterface,
+    LegacyVariableDisplayConfigInterface,
+} from "../../clientUtils/LegacyVariableDisplayConfigInterface"
 import { arrToCsvRow } from "../../clientUtils/Util"
+import {
+    DataValueQueryArgs,
+    DataValueResult,
+    LegacyVariableId,
+} from "../../clientUtils/owidTypes"
 
 export namespace Variable {
     export interface Row {
@@ -27,6 +35,7 @@ export namespace Variable {
 }
 
 export async function getVariableData(variableIds: number[]): Promise<any> {
+    variableIds = lodash.uniq(variableIds)
     const data: any = { variables: {}, entityKey: {} }
 
     const variableQuery = db.queryMysql(
@@ -180,4 +189,74 @@ export async function writeVariableCSV(
         }
         row[variableColumnIndex[datum.variableId]] = datum.value
     }
+}
+
+export const getDataValue = async ({
+    variableId,
+    entityId,
+    year,
+}: DataValueQueryArgs): Promise<DataValueResult | undefined> => {
+    if (!variableId || !entityId) return
+
+    const queryStart = `
+        SELECT value, year, variables.unit as unit, entities.name as entityName FROM data_values
+        JOIN entities on entities.id = data_values.entityId
+        JOIN variables on variables.id = data_values.variableId
+        WHERE entities.id = ?
+        AND variables.id= ?`
+
+    const queryStartVariables = [entityId, variableId]
+
+    let row
+
+    if (year) {
+        row = await db.mysqlFirst(
+            `${queryStart}
+            AND data_values.year = ?`,
+            [...queryStartVariables, year]
+        )
+    } else {
+        row = await db.mysqlFirst(
+            `${queryStart}
+            ORDER BY data_values.year DESC
+            LIMIT 1`,
+            queryStartVariables
+        )
+    }
+
+    if (!row) return
+
+    return {
+        value: Number(row.value),
+        year: Number(row.year),
+        unit: row.unit,
+        entityName: row.entityName,
+    }
+}
+
+export const getLegacyChartDimensionConfigForVariable = async (
+    variableId: LegacyVariableId,
+    chartId: number
+): Promise<LegacyChartDimensionInterface | undefined> => {
+    const row = await db.mysqlFirst(
+        `SELECT config->"$.dimensions" as dimensions from charts WHERE id=?`,
+        [chartId]
+    )
+    if (!row.dimensions) return
+    const dimensions = JSON.parse(row.dimensions)
+    return dimensions.find(
+        (dimension: LegacyChartDimensionInterface) =>
+            dimension.variableId === variableId
+    )
+}
+
+export const getLegacyVariableDisplayConfig = async (
+    variableId: LegacyVariableId
+): Promise<LegacyVariableDisplayConfigInterface | undefined> => {
+    const row = await db.mysqlFirst(
+        `SELECT display from variables WHERE id=?`,
+        [variableId]
+    )
+    if (!row.display) return
+    return JSON.parse(row.display)
 }

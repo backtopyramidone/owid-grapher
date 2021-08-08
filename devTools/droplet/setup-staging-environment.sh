@@ -10,7 +10,7 @@
 # NEW_NAME.owid.cloud.	1	IN	CNAME	staging.owid.cloud.
 
 # Output commands to stdout as they execute
-set -x
+set -ex
 
 ## Move files
 cd ~
@@ -77,7 +77,7 @@ sudo certbot --nginx -d NEW_NAME.owid.cloud
 rm -rf ~/NEW_NAME-data/bakedSite/.netlify
 # Create new Netlify site
 cd ~/NEW_NAME-data/bakedSite/
-netlify deploy
+netlify deploy --dir=.
 # Use NEW_NAME-owid as site name
 # Leave publish to .
 # Time: >10min?

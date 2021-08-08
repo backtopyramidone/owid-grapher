@@ -12,9 +12,11 @@ import * as path from "path"
 import { renderBlocks } from "../site/blocks"
 import { RelatedCharts } from "../site/blocks/RelatedCharts"
 import {
+    DataValueProps,
     FormattedPost,
     FormattingOptions,
     FullPost,
+    JsonError,
     TocHeading,
 } from "../clientUtils/owidTypes"
 import { bakeGlobalEntitySelector } from "./bakeGlobalEntitySelector"
@@ -26,9 +28,13 @@ import { formatGlossaryTerms } from "../site/formatGlossary"
 import { getMutableGlossary, glossary } from "../site/glossary"
 import { DataToken } from "../site/DataToken"
 import {
+    dataValueRegex,
     DEEP_LINK_CLASS,
+    extractDataValuesConfiguration,
+    formatDataValue,
     formatLinks,
     getHtmlContentWithStyles,
+    parseKeyValueArgs,
 } from "./formatting"
 import { mathjax } from "mathjax-full/js/mathjax"
 import { TeX } from "mathjax-full/js/input/tex"
@@ -38,6 +44,12 @@ import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html"
 import { AllPackages } from "mathjax-full/js/input/tex/AllPackages"
 import { replaceIframesWithExplorerRedirectsInWordPressPost } from "./replaceExplorerRedirects"
 import { EXPLORERS_ROUTE_FOLDER } from "../explorer/ExplorerConstants"
+import {
+    getDataValue,
+    getLegacyChartDimensionConfigForVariable,
+    getLegacyVariableDisplayConfig,
+} from "../db/model/Variable"
+import { AnnotatingDataValue } from "../site/AnnotatingDataValue"
 
 const initMathJax = () => {
     const adaptor = liteAdaptor()
@@ -143,9 +155,83 @@ export const formatWordpressPost = async (
         }
     })
 
-    html = html.replace(/{{([A-Z_]+)}}/gm, (_, token) => {
-        return ReactDOMServer.renderToString(<DataToken token={token} />)
+    const dataValuesConfigurationsMap = await extractDataValuesConfiguration(
+        html
+    )
+    const dataValues = new Map<string, DataValueProps>()
+    for (const [
+        dataValueConfigurationString,
+        dataValueConfiguration,
+    ] of dataValuesConfigurationsMap) {
+        const { queryArgs, template } = dataValueConfiguration
+        const { variableId, chartId } = queryArgs
+        const { value, year, unit, entityName } =
+            (await getDataValue(queryArgs)) || {}
+
+        if (!value || !year || !entityName)
+            throw new JsonError(
+                `Missing data for query ${dataValueConfigurationString}. Please check the tag for any missing or wrong argument.`
+            )
+        if (!template)
+            throw new JsonError(
+                `Missing template for query ${dataValueConfigurationString}`
+            )
+
+        let formattedValue
+        if (variableId && chartId) {
+            const legacyVariableDisplayConfig = await getLegacyVariableDisplayConfig(
+                variableId
+            )
+            const legacyChartDimension = await getLegacyChartDimensionConfigForVariable(
+                variableId,
+                chartId
+            )
+            formattedValue = formatDataValue(
+                value,
+                variableId,
+                legacyVariableDisplayConfig,
+                legacyChartDimension
+            )
+        }
+
+        dataValues.set(dataValueConfigurationString, {
+            value,
+            formattedValue,
+            template,
+            year,
+            unit,
+            entityName,
+        })
+    }
+
+    html = html.replace(dataValueRegex, (_, dataValueConfigurationString) => {
+        const dataValueProps: DataValueProps | undefined = dataValues.get(
+            dataValueConfigurationString
+        )
+        if (!dataValueProps)
+            throw new JsonError(
+                `Missing data value for query ${dataValueConfigurationString}`
+            )
+        return ReactDOMServer.renderToString(
+            <AnnotatingDataValue dataValueProps={dataValueProps} />
+        )
     })
+
+    // Needs to be happen after DataValue replacements, as the DataToken regex
+    // would otherwise capture DataValue tags
+    const dataTokenRegex = /{{\s*([a-zA-Z]+)\s*(.+?)\s*}}/g
+
+    html = html.replace(
+        dataTokenRegex,
+        (_, token, dataTokenConfigurationString) => {
+            return ReactDOMServer.renderToString(
+                <DataToken
+                    token={token}
+                    {...parseKeyValueArgs(dataTokenConfigurationString)}
+                />
+            )
+        }
+    )
 
     // Insert [table id=foo] tablepress tables
     const tables = await getTables()

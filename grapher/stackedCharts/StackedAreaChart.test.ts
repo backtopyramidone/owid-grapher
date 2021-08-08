@@ -14,14 +14,13 @@ import { SelectionArray } from "../selection/SelectionArray"
 import { OwidTable } from "../../coreTable/OwidTable"
 import { ColumnTypeNames } from "../../coreTable/CoreColumnDef"
 import { isNumber } from "../../clientUtils/Util"
-import { SeriesStrategy } from "../core/GrapherConstants"
 
 class MockManager implements ChartManager {
     table = SynthesizeGDPTable({
         timeRange: [1950, 2010],
     })
     yColumnSlugs = [SampleColumnSlugs.GDP]
-    yAxis = new AxisConfig({ min: 0, max: 200 })
+    yAxisConfig = new AxisConfig({ min: 0, max: 200 })
     @observable isRelativeMode = false
     selection = new SelectionArray()
 }
@@ -77,9 +76,9 @@ describe("column charts", () => {
 it("use author axis settings unless relative mode", () => {
     const manager = new MockManager()
     const chart = new StackedAreaChart({ manager })
-    expect(chart.verticalAxis.domain[1]).toBeGreaterThan(100)
+    expect(chart.yAxis.domain[1]).toBeGreaterThan(100)
     manager.isRelativeMode = true
-    expect(chart.verticalAxis.domain).toEqual([0, 100])
+    expect(chart.yAxis.domain).toEqual([0, 100])
 })
 
 it("shows a failure message if there are columns but no series", () => {

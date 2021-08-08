@@ -29,7 +29,7 @@ class GameBoyGame extends GameBoyGameDefaults implements Persistable {
         if (obj) this.updateFromObject(obj)
     }
 
-    updateFromObject(obj: GameBoyGameInterface) {
+    updateFromObject(obj: GameBoyGameInterface): void {
         updatePersistables(this, obj)
         if (obj.mainCharacter)
             this.mainCharacter = new Character(obj.mainCharacter)
@@ -61,7 +61,7 @@ class Character
         if (props) this.updateFromObject(props)
     }
 
-    toObject() {
+    toObject(): { name: string; country: string } {
         const { name, country } = this
         return {
             name,
@@ -69,7 +69,7 @@ class Character
         }
     }
 
-    updateFromObject(obj: CharacterInterface) {
+    updateFromObject(obj: CharacterInterface): void {
         this.name = obj.name
         this.country = obj.country
     }
@@ -127,4 +127,15 @@ it("can handle an array of persistables", () => {
         relatedGames: [{ title: "TestGame2" }],
     })
     expect(game.relatedGames![0].players).toEqual(2)
+})
+
+it("can handle Infinity", () => {
+    const game = new GameBoyGame({
+        players: Infinity,
+    })
+    const persisted = deleteRuntimeAndUnchangedProps(
+        game,
+        new GameBoyGame({ players: -Infinity })
+    )
+    expect(persisted).toEqual({ players: Infinity })
 })

@@ -8,7 +8,6 @@ import {
 import {
     isEmpty,
     reverse,
-    toArray,
     first,
     last,
     roundSigFig,
@@ -156,7 +155,7 @@ export class ColorScale {
 
         const { numBins, customNumericValues } = this
 
-        let values = toArray(customNumericValues)
+        let values = [...customNumericValues]
         while (values.length < numBins) values.push(0)
         while (values.length > numBins) values = values.slice(0, numBins)
         return values
@@ -343,9 +342,16 @@ export class ColorScale {
         })
     }
 
-    getColor(value: number | string | undefined): string | undefined {
+    getBinForValue(
+        value: number | string | undefined
+    ): ColorScaleBin | undefined {
         return value === undefined
-            ? this.noDataColor
-            : this.legendBins.find((bin) => bin.contains(value))?.color
+            ? undefined
+            : this.legendBins.find((bin) => bin.contains(value))
+    }
+
+    getColor(value: number | string | undefined): string | undefined {
+        if (value === undefined) return this.noDataColor
+        return this.getBinForValue(value)?.color
     }
 }

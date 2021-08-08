@@ -8,7 +8,7 @@ import {
     ScatterLabelFontFamily as fontFamily,
 } from "./ScatterPlotChartConstants"
 
-export const labelPriority = (label: ScatterLabel) => {
+export const labelPriority = (label: ScatterLabel): number => {
     let priority = label.fontSize
 
     if (label.series.isHover) priority += 10000
@@ -194,11 +194,11 @@ export const makeEndLabel = (
     })
 
     if (labelPos.x < lastPos.x)
-        labelBounds = labelBounds.extend({
+        labelBounds = labelBounds.set({
             x: labelBounds.x - labelBounds.width,
         })
     if (labelPos.y > lastPos.y)
-        labelBounds = labelBounds.extend({
+        labelBounds = labelBounds.set({
             y: labelBounds.y + labelBounds.height / 2,
         })
 

@@ -23,7 +23,7 @@ import {
     HorizontalAxisGridLines,
 } from "../axis/AxisViews"
 import { NoDataModal } from "../noDataModal/NoDataModal"
-import { AxisConfig } from "../axis/AxisConfig"
+import { AxisConfig, FontSizeManager } from "../axis/AxisConfig"
 import { ColorSchemes } from "../color/ColorSchemes"
 import { ChartInterface } from "../chart/ChartInterface"
 import {
@@ -37,10 +37,22 @@ import { HorizontalAxis } from "../axis/Axis"
 import { SelectionArray } from "../selection/SelectionArray"
 import { CoreColumn } from "../../coreTable/CoreTableColumns"
 import { ColorScheme } from "../color/ColorScheme"
-import { Time } from "../../clientUtils/owidTypes"
+import {
+    Time,
+    SortOrder,
+    SortBy,
+    SortConfig,
+} from "../../clientUtils/owidTypes"
+import { LegacyOwidRow } from "../../coreTable/OwidTableConstants"
 
 const labelToTextPadding = 10
 const labelToBarPadding = 5
+
+interface DiscreteBarItem {
+    seriesName: string
+    row: LegacyOwidRow<any>
+    color?: string
+}
 
 @observer
 export class DiscreteBarChart
@@ -48,7 +60,7 @@ export class DiscreteBarChart
         bounds?: Bounds
         manager: DiscreteBarChartManager
     }>
-    implements ChartInterface {
+    implements ChartInterface, FontSizeManager {
     base: React.RefObject<SVGGElement> = React.createRef()
 
     transformTable(table: OwidTable): OwidTable {
@@ -93,14 +105,14 @@ export class DiscreteBarChart
     }
 
     @computed private get isLogScale(): boolean {
-        return this.yAxis.scaleType === ScaleType.log
+        return this.yAxisConfig.scaleType === ScaleType.log
     }
 
     @computed private get bounds(): Bounds {
         return (this.props.bounds ?? DEFAULT_BOUNDS).padRight(10)
     }
 
-    @computed private get baseFontSize(): number {
+    @computed get fontSize(): number {
         return this.manager.baseFontSize ?? BASE_FONT_SIZE
     }
 
@@ -109,7 +121,7 @@ export class DiscreteBarChart
         fontWeight: number
     } {
         return {
-            fontSize: 0.75 * this.baseFontSize,
+            fontSize: 0.75 * this.fontSize,
             fontWeight: 700,
         }
     }
@@ -119,7 +131,7 @@ export class DiscreteBarChart
         fontWeight: number
     } {
         return {
-            fontSize: 0.75 * this.baseFontSize,
+            fontSize: 0.75 * this.fontSize,
             fontWeight: 400,
         }
     }
@@ -189,13 +201,13 @@ export class DiscreteBarChart
         ]
     }
 
-    @computed private get yAxis(): AxisConfig {
-        return this.manager.yAxis || new AxisConfig()
+    @computed private get yAxisConfig(): AxisConfig {
+        return new AxisConfig(this.manager.yAxisConfig, this)
     }
 
-    @computed private get axis(): HorizontalAxis {
+    @computed get yAxis(): HorizontalAxis {
         // NB: We use the user's YAxis options here to make the XAxis
-        const axis = this.yAxis.toHorizontalAxis()
+        const axis = this.yAxisConfig.toHorizontalAxis()
         axis.updateDomainPreservingUserSettings(this.xDomainDefault)
 
         axis.formatColumn = this.yColumns[0] // todo: does this work for columns as series?
@@ -207,7 +219,7 @@ export class DiscreteBarChart
     @computed private get innerBounds(): Bounds {
         return this.bounds
             .padLeft(this.legendWidth + this.leftValueLabelWidth)
-            .padBottom(this.axis.height)
+            .padBottom(this.yAxis.height)
             .padRight(this.rightValueLabelWidth)
     }
 
@@ -229,13 +241,15 @@ export class DiscreteBarChart
     }
 
     @computed private get barPlacements(): { x: number; width: number }[] {
-        const { series, axis } = this
+        const { series, yAxis } = this
         return series.map((d) => {
             const isNegative = d.value < 0
-            const barX = isNegative ? axis.place(d.value) : axis.place(this.x0)
+            const barX = isNegative
+                ? yAxis.place(d.value)
+                : yAxis.place(this.x0)
             const barWidth = isNegative
-                ? axis.place(this.x0) - barX
-                : axis.place(d.value) - barX
+                ? yAxis.place(this.x0) - barX
+                : yAxis.place(d.value) - barX
 
             return { x: barX, width: barWidth }
         })
@@ -281,7 +295,7 @@ export class DiscreteBarChart
         const {
             series,
             bounds,
-            axis,
+            yAxis,
             innerBounds,
             barHeight,
             barSpacing,
@@ -301,22 +315,22 @@ export class DiscreteBarChart
                 />
                 <HorizontalAxisComponent
                     bounds={bounds}
-                    axis={axis}
+                    axis={yAxis}
                     axisPosition={innerBounds.bottom}
                 />
                 <HorizontalAxisGridLines
-                    horizontalAxis={axis}
+                    horizontalAxis={yAxis}
                     bounds={innerBounds}
                 />
                 {series.map((series) => {
                     // Todo: add a "placedSeries" getter to get the transformed series, then just loop over the placedSeries and render a bar for each
                     const isNegative = series.value < 0
                     const barX = isNegative
-                        ? axis.place(series.value)
-                        : axis.place(this.x0)
+                        ? yAxis.place(series.value)
+                        : yAxis.place(this.x0)
                     const barWidth = isNegative
-                        ? axis.place(this.x0) - barX
-                        : axis.place(series.value) - barX
+                        ? yAxis.place(this.x0) - barX
+                        : yAxis.place(series.value) - barX
                     const valueLabel = this.formatValue(series)
                     const labelX = isNegative
                         ? barX -
@@ -361,7 +375,7 @@ export class DiscreteBarChart
                                 x={0}
                                 y={0}
                                 transform={`translate(${
-                                    axis.place(series.value) +
+                                    yAxis.place(series.value) +
                                     (isNegative
                                         ? -labelToBarPadding
                                         : labelToBarPadding)
@@ -430,7 +444,7 @@ export class DiscreteBarChart
         return this.transformedTable.getColumns(this.yColumnSlugs)
     }
 
-    @computed private get columnsAsSeries() {
+    @computed private get columnsAsSeries(): DiscreteBarItem[] {
         return excludeUndefined(
             this.yColumns.map((col) => {
                 const row = first(col.owidRows)
@@ -445,7 +459,7 @@ export class DiscreteBarChart
         )
     }
 
-    @computed private get entitiesAsSeries() {
+    @computed private get entitiesAsSeries(): DiscreteBarItem[] {
         const { transformedTable } = this
         return this.yColumns[0].owidRows.map((row) => {
             return {
@@ -456,12 +470,31 @@ export class DiscreteBarChart
         })
     }
 
-    @computed private get sortedRawSeries() {
+    @computed get sortConfig(): SortConfig {
+        return this.manager.sortConfig ?? {}
+    }
+
+    @computed private get sortedRawSeries(): DiscreteBarItem[] {
         const raw =
             this.seriesStrategy === SeriesStrategy.entity
                 ? this.entitiesAsSeries
                 : this.columnsAsSeries
-        return sortBy(raw, (series) => series.row.value)
+
+        let sortByFunc: (item: DiscreteBarItem) => number | string
+        switch (this.sortConfig.sortBy) {
+            case SortBy.entityName:
+                sortByFunc = (item: DiscreteBarItem) => item.seriesName
+                break
+            default:
+            case SortBy.total:
+            case SortBy.column: // we only have one yColumn, so total and column are the same
+                sortByFunc = (item: DiscreteBarItem) => item.row.value
+                break
+        }
+        const sortedSeries = sortBy(raw, sortByFunc)
+        const sortOrder = this.sortConfig.sortOrder ?? SortOrder.desc
+        if (sortOrder === SortOrder.desc) sortedSeries.reverse()
+        return sortedSeries
     }
 
     @computed private get colorScheme(): ColorScheme | undefined {
@@ -483,28 +516,25 @@ export class DiscreteBarChart
 
         return colorScheme?.getUniqValueColorMap(
             uniq(sortedRawSeries.map((series) => series.row.value)),
-            manager.invertColorScheme
+            !manager.invertColorScheme // negate here to be consistent with how things worked before
         )
     }
 
     @computed get series(): DiscreteBarSeries[] {
         const { manager, colorScheme } = this
 
-        const series = this.sortedRawSeries
-            .slice() // we need to clone/slice here so `.reverse()` doesn't modify `this.sortedRawSeries` in-place
-            .reverse()
-            .map((rawSeries) => {
-                const { row, seriesName, color } = rawSeries
-                const series: DiscreteBarSeries = {
-                    ...row,
-                    seriesName,
-                    color:
-                        color ??
-                        this.valuesToColorsMap?.get(row.value) ??
-                        DEFAULT_BAR_COLOR,
-                }
-                return series
-            })
+        const series = this.sortedRawSeries.map((rawSeries) => {
+            const { row, seriesName, color } = rawSeries
+            const series: DiscreteBarSeries = {
+                ...row,
+                seriesName,
+                color:
+                    color ??
+                    this.valuesToColorsMap?.get(row.value) ??
+                    DEFAULT_BAR_COLOR,
+            }
+            return series
+        })
 
         if (manager.isLineChart) {
             // For LineChart-based bar charts, we want to assign colors from the color scheme.

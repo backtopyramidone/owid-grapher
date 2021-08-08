@@ -1,4 +1,3 @@
-import { AxisConfig } from "../axis/AxisConfig"
 import { ColorScaleConfigInterface } from "../color/ColorScaleConfig"
 import {
     EntitySelectionMode,
@@ -9,11 +8,11 @@ import {
 import { ComparisonLineConfig } from "../scatterCharts/ComparisonLine"
 import { TooltipProps } from "../tooltip/TooltipProps"
 import { OwidTable } from "../../coreTable/OwidTable"
-import { ColumnSlug } from "../../coreTable/CoreTableConstants"
 import { AxisConfigInterface } from "../axis/AxisConfigInterface"
 import { ColorSchemeName } from "../color/ColorConstants"
 import { EntityName } from "../../coreTable/OwidTableConstants"
 import { SelectionArray } from "../selection/SelectionArray"
+import { Annotation, ColumnSlug, SortConfig } from "../../clientUtils/owidTypes"
 
 // The possible options common across our chart types. Not all of these apply to every chart type, so there is room to create a better type hierarchy.
 
@@ -37,12 +36,10 @@ export interface ChartManager {
     zoomToSelection?: boolean
     matchingEntitiesOnly?: boolean
 
-    colorScale?: ColorScaleConfigInterface
+    colorScale?: Readonly<ColorScaleConfigInterface>
 
-    yAxis?: AxisConfig // Remove? Just pass interfaces?
-    xAxis?: AxisConfig
-    yAxisConfig?: AxisConfigInterface
-    xAxisConfig?: AxisConfigInterface
+    yAxisConfig?: Readonly<AxisConfigInterface>
+    xAxisConfig?: Readonly<AxisConfigInterface>
 
     addCountryMode?: EntitySelectionMode
 
@@ -60,12 +57,13 @@ export interface ChartManager {
     seriesColorMap?: SeriesColorMap
 
     hidePoints?: boolean // for line options
-    lineStrokeWidth?: number
-
-    hideXAxis?: boolean
-    hideYAxis?: boolean
 
     facetStrategy?: FacetStrategy // todo: make a strategy? a column prop? etc
 
+    sortConfig?: SortConfig
+
     seriesStrategy?: SeriesStrategy
+
+    annotation?: Annotation
+    resetAnnotation?: () => void
 }

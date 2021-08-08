@@ -15,7 +15,6 @@ import {
 import { isPresent } from "../clientUtils/isPresent"
 import { CoreColumn, ColumnTypeMap, MissingColumn } from "./CoreTableColumns"
 import {
-    ColumnSlug,
     CoreColumnStore,
     CoreRow,
     CoreTableInputOption,
@@ -66,7 +65,7 @@ import {
 } from "./ErrorValues"
 import { OwidTableSlugs } from "./OwidTableConstants"
 import { applyTransforms } from "./Transforms"
-import { Transform } from "node:stream"
+import { ColumnSlug } from "../clientUtils/owidTypes"
 
 interface AdvancedOptions {
     tableDescription?: string

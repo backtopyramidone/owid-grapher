@@ -28,6 +28,7 @@ import {
     ScatterLabel,
     ScatterRenderPoint,
     ScatterLabelFontFamily,
+    ScatterSeries,
 } from "./ScatterPlotChartConstants"
 import { ScatterLine, ScatterPoint } from "./ScatterPoints"
 import {
@@ -37,58 +38,58 @@ import {
     labelPriority,
 } from "./ScatterUtils"
 import { Triangle } from "./Triangle"
+import { ColorScale } from "../color/ColorScale"
+import { ScaleLinear } from "d3-scale"
 
 // This is the component that actually renders the points. The higher level ScatterPlot class renders points, legends, comparison lines, etc.
 @observer
-export class ScatterPointsWithLabels extends React.Component<
-    ScatterPointsWithLabelsProps
-> {
+export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLabelsProps> {
     base: React.RefObject<SVGGElement> = React.createRef()
-    @computed private get seriesArray() {
+    @computed private get seriesArray(): ScatterSeries[] {
         return this.props.seriesArray
     }
 
-    @computed private get isConnected() {
+    @computed private get isConnected(): boolean {
         return this.seriesArray.some((g) => g.points.length > 1)
     }
 
-    @computed private get focusedSeriesNames() {
+    @computed private get focusedSeriesNames(): string[] {
         return intersection(
             this.props.focusedSeriesNames || [],
             this.seriesArray.map((g) => g.seriesName)
         )
     }
 
-    @computed private get hoveredSeriesNames() {
+    @computed private get hoveredSeriesNames(): string[] {
         return this.props.hoveredSeriesNames
     }
 
     // Layered mode occurs when any entity on the chart is hovered or focused
     // Then, a special "foreground" set of entities is rendered over the background
-    @computed private get isLayerMode() {
+    @computed private get isLayerMode(): boolean {
         return (
             this.focusedSeriesNames.length > 0 ||
             this.hoveredSeriesNames.length > 0
         )
     }
 
-    @computed private get bounds() {
+    @computed private get bounds(): Bounds {
         return this.props.dualAxis.innerBounds
     }
 
     // When focusing multiple entities, we hide some information to declutter
-    @computed private get isSubtleForeground() {
+    @computed private get isSubtleForeground(): boolean {
         return (
             this.focusedSeriesNames.length > 1 &&
             this.props.seriesArray.some((series) => series.points.length > 2)
         )
     }
 
-    @computed private get colorScale() {
+    @computed private get colorScale(): ColorScale | undefined {
         return this.props.colorScale
     }
 
-    @computed private get sizeScale() {
+    @computed private get sizeScale(): ScaleLinear<number, number> {
         const sizeScale = scaleLinear()
             .range([10, 1000])
             .domain(this.props.sizeDomain)
@@ -99,7 +100,7 @@ export class ScatterPointsWithLabels extends React.Component<
         return scaleLinear().range([10, 13]).domain(this.sizeScale.domain())
     }
 
-    @computed private get hideConnectedScatterLines() {
+    @computed private get hideConnectedScatterLines(): boolean {
         return this.props.hideConnectedScatterLines
     }
 
@@ -201,13 +202,15 @@ export class ScatterPointsWithLabels extends React.Component<
         return renderData
     }
 
-    private hideUnselectedLabels(labelsByPriority: ScatterLabel[]) {
+    private hideUnselectedLabels(labelsByPriority: ScatterLabel[]): void {
         labelsByPriority
             .filter((label) => !label.series.isFocus && !label.series.isHover)
             .forEach((label) => (label.isHidden = true))
     }
 
-    private hideCollidingLabelsByPriority(labelsByPriority: ScatterLabel[]) {
+    private hideCollidingLabelsByPriority(
+        labelsByPriority: ScatterLabel[]
+    ): void {
         for (let i = 0; i < labelsByPriority.length; i++) {
             const higherPriorityLabel = labelsByPriority[i]
             if (higherPriorityLabel.isHidden) continue
@@ -251,82 +254,85 @@ export class ScatterPointsWithLabels extends React.Component<
     private moveLabelsInsideChartBounds(
         labels: ScatterLabel[],
         bounds: Bounds
-    ) {
+    ): void {
         for (const label of labels) {
             if (label.bounds.left < bounds.left - 1)
-                label.bounds = label.bounds.extend({
+                label.bounds = label.bounds.set({
                     x: label.bounds.x + label.bounds.width,
                 })
             else if (label.bounds.right > bounds.right + 1)
-                label.bounds = label.bounds.extend({
+                label.bounds = label.bounds.set({
                     x: label.bounds.x - label.bounds.width,
                 })
 
             if (label.bounds.top < bounds.top - 1)
-                label.bounds = label.bounds.extend({ y: bounds.top })
+                label.bounds = label.bounds.set({ y: bounds.top })
             else if (label.bounds.bottom > bounds.bottom + 1)
-                label.bounds = label.bounds.extend({
+                label.bounds = label.bounds.set({
                     y: bounds.bottom - label.bounds.height,
                 })
         }
     }
 
     mouseFrame?: number
-    @action.bound onMouseLeave() {
+    @action.bound onMouseLeave(): void {
         if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
 
         if (this.props.onMouseLeave) this.props.onMouseLeave()
     }
 
-    @action.bound onMouseMove(ev: React.MouseEvent<SVGGElement>) {
+    @action.bound onMouseMove(ev: React.MouseEvent<SVGGElement>): void {
         if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
 
         const nativeEvent = ev.nativeEvent
 
         this.mouseFrame = requestAnimationFrame(() => {
-            const mouse = getRelativeMouse(this.base.current, nativeEvent)
+            if (this.base.current) {
+                const mouse = getRelativeMouse(this.base.current, nativeEvent)
 
-            const closestSeries = minBy(this.renderSeries, (series) => {
-                if (series.points.length > 1)
+                const closestSeries = minBy(this.renderSeries, (series) => {
+                    if (series.points.length > 1)
+                        return min(
+                            series.points.slice(0, -1).map((d, i) => {
+                                return PointVector.distanceFromPointToLineSq(
+                                    mouse,
+                                    d.position,
+                                    series.points[i + 1].position
+                                )
+                            })
+                        )
+
                     return min(
-                        series.points.slice(0, -1).map((d, i) => {
-                            return PointVector.distanceFromPointToLineSq(
-                                mouse,
-                                d.position,
-                                series.points[i + 1].position
-                            )
-                        })
+                        series.points.map((v) =>
+                            PointVector.distanceSq(v.position, mouse)
+                        )
                     )
+                })
 
-                return min(
-                    series.points.map((v) =>
-                        PointVector.distanceSq(v.position, mouse)
+                if (closestSeries && this.props.onMouseOver) {
+                    const series = this.seriesArray.find(
+                        (series) =>
+                            series.seriesName === closestSeries.seriesName
                     )
-                )
-            })
-
-            if (closestSeries && this.props.onMouseOver) {
-                const series = this.seriesArray.find(
-                    (series) => series.seriesName === closestSeries.seriesName
-                )
-                if (series) this.props.onMouseOver(series)
+                    if (series) this.props.onMouseOver(series)
+                }
             }
         })
     }
 
-    @action.bound onClick() {
+    @action.bound onClick(): void {
         if (this.props.onClick) this.props.onClick()
     }
 
-    @computed get backgroundSeries() {
+    @computed get backgroundSeries(): ScatterRenderSeries[] {
         return this.renderSeries.filter((series) => !series.isForeground)
     }
 
-    @computed get foregroundSeries() {
+    @computed get foregroundSeries(): ScatterRenderSeries[] {
         return this.renderSeries.filter((series) => !!series.isForeground)
     }
 
-    private renderBackgroundSeries() {
+    private renderBackgroundSeries(): JSX.Element[] {
         const {
             backgroundSeries,
             isLayerMode,
@@ -346,7 +352,7 @@ export class ScatterPointsWithLabels extends React.Component<
               ))
     }
 
-    private renderBackgroundLabels() {
+    private renderBackgroundLabels(): JSX.Element {
         const { isLayerMode } = this
         return (
             <g
@@ -377,11 +383,11 @@ export class ScatterPointsWithLabels extends React.Component<
         )
     }
 
-    @computed get renderUid() {
+    @computed get renderUid(): number {
         return guid()
     }
 
-    private renderForegroundSeries() {
+    private renderForegroundSeries(): JSX.Element[] {
         const { isSubtleForeground, hideConnectedScatterLines } = this
         return this.foregroundSeries.map((series) => {
             const lastValue = last(series.points) as ScatterRenderPoint
@@ -466,7 +472,7 @@ export class ScatterPointsWithLabels extends React.Component<
         })
     }
 
-    private renderForegroundLabels() {
+    private renderForegroundLabels(): JSX.Element[][] {
         return this.foregroundSeries.map((series) => {
             return series.allLabels
                 .filter((label) => !label.isHidden)
@@ -497,7 +503,7 @@ export class ScatterPointsWithLabels extends React.Component<
         unknown
     >
 
-    private runAnimation() {
+    private runAnimation(): void {
         const radiuses: string[] = []
         this.animSelection = select(this.base.current).selectAll("circle")
 
@@ -513,15 +519,15 @@ export class ScatterPointsWithLabels extends React.Component<
             .on("end", () => this.forceUpdate())
     }
 
-    componentDidMount() {
+    componentDidMount(): void {
         this.runAnimation()
     }
 
-    componentWillUnmount() {
+    componentWillUnmount(): void {
         if (this.animSelection) this.animSelection.interrupt()
     }
 
-    render() {
+    render(): JSX.Element {
         const { bounds, renderSeries, renderUid } = this
         const clipBounds = bounds.pad(-10)
 

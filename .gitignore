@@ -31,3 +31,5 @@ initdone
 .theia/
 owid_metadata_sql.gz
 .env
+/grapherData
+/grapherSvgs

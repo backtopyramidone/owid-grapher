@@ -92,6 +92,10 @@ yarn testPrettierAll`
         // Making sure we have the latest changes from the upstream
         // Also, will fail if working copy is not clean
         try {
+            const gitStatus = await simpleGit.status()
+            // gitStatus.isClean() checks for staged, unstaged, and untracked files
+            if (!gitStatus.isClean()) throw "Git working directory is not clean"
+
             await simpleGit.pull("origin", undefined, { "--rebase": "true" })
         } catch (err) {
             this.printAndExit(JSON.stringify(err))
@@ -200,8 +204,6 @@ yarn testPrettierAll`
             rsyncTargetDirTmp,
             finalTargetDir,
             rsyncTargetDir,
-            owidUserHomeTmpDir,
-            owidUserHomeDir,
             oldRepoBackupDir,
             finalDataDir,
         } = this.pathsOnTarget
@@ -264,7 +266,7 @@ yarn testPrettierAll`
     private async copyLocalRepoToServerTmpDirectory() {
         const { owidGrapherRootDir } = this.options
         const { rsyncTargetDir } = this.pathsOnTarget
-        const RSYNC = `rsync -havz --no-perms --progress --delete --delete-excluded --exclude-from=${owidGrapherRootDir}/.rsync-ignore`
+        const RSYNC = `rsync -havz --no-perms --progress --delete --delete-excluded --prune-empty-dirs --exclude-from=${owidGrapherRootDir}/.rsync-ignore`
         await execWrapper(
             `${RSYNC} ${owidGrapherRootDir}/ ${this.sshHost}:${rsyncTargetDir}`
         )

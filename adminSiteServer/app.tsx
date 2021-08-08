@@ -1,6 +1,6 @@
 import * as React from "react"
 import simpleGit from "simple-git"
-import express from "express"
+import express, { NextFunction } from "express"
 require("express-async-errors") // todo: why the require?
 import cookieParser from "cookie-parser"
 import "reflect-metadata"
@@ -115,53 +115,9 @@ export class OwidAdminApp {
         if (this.options.isDev) app.use("/", mockSiteRouter)
 
         // Give full error messages, including in production
-        app.use(
-            async (err: any, req: any, res: express.Response, next: any) => {
-                if (!res.headersSent) {
-                    res.status(err.status || 500)
-                    res.send({
-                        error: {
-                            message: err.stack || err,
-                            status: err.status || 500,
-                        },
-                    })
-                } else {
-                    res.write(
-                        JSON.stringify({
-                            error: {
-                                message: err.stack || err,
-                                status: err.status || 500,
-                            },
-                        })
-                    )
-                    res.end()
-                }
-            }
-        )
+        app.use(this.errorHandler)
 
-        try {
-            await db.getConnection()
-        } catch (err) {
-            if (!this.options.quiet) {
-                console.log(`Failed to connect to grapher mysql database.`)
-                console.error(err)
-                console.log(
-                    "Could not connect to Wordpress database. Continuing without DB..."
-                )
-            }
-        }
-
-        // The Grapher should be able to work without Wordpress being set up.
-        try {
-            await wpdb.singleton.connect()
-        } catch (error) {
-            if (!this.options.quiet) {
-                console.error(error)
-                console.log(
-                    "Could not connect to Wordpress database. Continuing without Wordpress..."
-                )
-            }
-        }
+        await this.connectToDatabases()
 
         this.server = await this.listenPromise(
             app,
@@ -184,11 +140,78 @@ export class OwidAdminApp {
         adminServerPort: number,
         adminServerHost: string
     ): Promise<http.Server> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const server = app.listen(adminServerPort, adminServerHost, () => {
                 resolve(server)
             })
         })
+    }
+
+    errorHandler = async (
+        err: any,
+        req: express.Request,
+        res: express.Response,
+        // keep `next` because Express only passes errors to handlers with 4 parameters.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        next: NextFunction
+    ) => {
+        if (!res.headersSent) {
+            res.status(err.status || 500)
+            res.send({
+                error: {
+                    message: err.stack || err,
+                    status: err.status || 500,
+                },
+            })
+        } else {
+            res.write(
+                JSON.stringify({
+                    error: {
+                        message: err.stack || err,
+                        status: err.status || 500,
+                    },
+                })
+            )
+            res.end()
+        }
+    }
+
+    connectToDatabases = async () => {
+        try {
+            await db.getConnection()
+        } catch (error) {
+            // grapher database is in fact required, but we will not fail now in case it
+            // comes online later
+            if (!this.options.quiet) {
+                console.error(error)
+                console.warn(
+                    "Could not connect to grapher database. Continuing without DB..."
+                )
+            }
+        }
+
+        if (wpdb.isWordpressDBEnabled) {
+            try {
+                await wpdb.singleton.connect()
+            } catch (error) {
+                if (!this.options.quiet) {
+                    console.error(error)
+                    console.warn(
+                        "Could not connect to Wordpress database. Continuing without Wordpress..."
+                    )
+                }
+            }
+        } else if (!this.options.quiet) {
+            console.log(
+                "WORDPRESS_DB_NAME is not configured -- continuing without Wordpress DB"
+            )
+        }
+
+        if (!wpdb.isWordpressAPIEnabled && !this.options.quiet) {
+            console.log(
+                "WORDPRESS_API_URL is not configured -- continuing without Wordpress API"
+            )
+        }
     }
 }
 

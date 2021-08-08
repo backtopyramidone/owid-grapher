@@ -38,8 +38,14 @@ export enum StackMode {
 export const BASE_FONT_SIZE = 16
 
 export enum FacetStrategy {
-    country = "country", // One chart for each country
-    column = "column", // One chart for each Y column
+    none = "none", // No facets
+    entity = "entity", // One chart for each country/entity
+    metric = "metric", // One chart for each Y column
+}
+
+export enum FacetAxisDomain {
+    independent = "independent", // all facets have their own y domain
+    shared = "shared", // all facets share the same y domain
 }
 
 export enum SeriesStrategy {
@@ -83,14 +89,6 @@ export enum ScatterPointLabelStrategy {
     year = "year",
     x = "x",
     y = "y",
-}
-
-export enum DimensionProperty {
-    y = "y",
-    x = "x",
-    size = "size",
-    color = "color",
-    table = "table",
 }
 
 // todo: remove
