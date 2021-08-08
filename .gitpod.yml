@@ -1,39 +1,39 @@
 image:
-  file: .gitpod.Dockerfile
+    file: .gitpod.Dockerfile
 
 # List the ports you want to expose and what to do when they are served. See https://www.gitpod.io/docs/config-ports/
 ports:
-  - port: 3030
-    onOpen: ignore
-    visibility: private
+    - port: 3030
+      onOpen: ignore
+      visibility: private
 
-  - port: 3306
-    onOpen: ignore
-    visibility: private
+    - port: 3306
+      onOpen: ignore
+      visibility: private
 
-  - port: 8090
-    onOpen: ignore
-    visibility: private
+    - port: 8090
+      onOpen: ignore
+      visibility: private
 
 # List the start up tasks. You can start them in parallel in multiple terminals. See https://www.gitpod.io/docs/config-start-tasks/
 tasks:
-  - init: >
-        docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7 && git clone https://github.com/owid/owid-content &&
-        wget -O owid_metadata.sql.gz "https://files.ourworldindata.org/owid_metadata.sql.gz" &&
-        gunzip -f owid_metadata.sql.gz &&
-        echo "sleeping 25 seconds for mysql server to come up" &&
-        sleep 25 &&
-        ./db/downloadAndCreateDatabase.sh &&
-        cp .env.example .env &&
-        python rewriteurlgitpod.py &&
-        yarn &&
-        tsc -b -verbose &&
-        chmod +x initdone.sh &&
-        touch initdone &&
-        cat urlgitpod.txt &&
-        sleep 10 &&
-        exit
-  - command: ./initdone.sh && docker start mysql-server && cat urlgitpod.txt && yarn startTscServer
-  - command: ./initdone.sh && sleep 5 && yarn startAdminServer
-  - command: ./initdone.sh && yarn startWebpackServer
-  - command: ./initdone.sh && cat urlgitpod.txt
+    - init: >
+          docker run -p 0.0.0.0:3306:3306 --name mysql-server -e MYSQL_ROOT_PASSWORD="" -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:5.7 && git clone https://github.com/owid/owid-content &&
+          wget -O owid_metadata.sql.gz "https://files.ourworldindata.org/owid_metadata.sql.gz" &&
+          gunzip -f owid_metadata.sql.gz &&
+          echo "sleeping 25 seconds for mysql server to come up" &&
+          sleep 25 &&
+          ./db/downloadAndCreateDatabase.sh &&
+          cp .env.example .env &&
+          python rewriteurlgitpod.py &&
+          yarn &&
+          tsc -b -verbose &&
+          chmod +x initdone.sh &&
+          touch initdone &&
+          cat urlgitpod.txt &&
+          sleep 10 &&
+          exit
+    - command: ./initdone.sh && docker start mysql-server && cat urlgitpod.txt && yarn startTscServer
+    - command: ./initdone.sh && sleep 5 && yarn startAdminServer
+    - command: ./initdone.sh && yarn startWebpackServer
+    - command: ./initdone.sh && cat urlgitpod.txt

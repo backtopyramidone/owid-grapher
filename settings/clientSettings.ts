@@ -19,26 +19,19 @@ export const ADMIN_SERVER_PORT: number =
     parseIntOrUndefined(process.env.ADMIN_SERVER_PORT) ?? 3030
 export const ADMIN_SERVER_HOST: string =
     process.env.ADMIN_SERVER_HOST ?? "localhost"
-export const BAKED_BASE_URL: string =
-    process.env.BAKED_BASE_URL ??
-    "localhost"
+export const BAKED_BASE_URL: string = process.env.BAKED_BASE_URL ?? "localhost"
 
 export const BAKED_GRAPHER_URL: string =
     process.env.BAKED_GRAPHER_URL ?? `${BAKED_BASE_URL}/grapher`
 export const ADMIN_BASE_URL: string =
-    process.env.ADMIN_BASE_URL ??
-    `${ADMIN_SERVER_HOST}:`
+    process.env.ADMIN_BASE_URL ?? `${ADMIN_SERVER_HOST}:`
 
-export const WORDPRESS_URL: string =
-    process.env.WORDPRESS_URL ?? ""
+export const WORDPRESS_URL: string = process.env.WORDPRESS_URL ?? ""
 
 export const ALGOLIA_ID: string = process.env.ALGOLIA_ID ?? ""
 export const ALGOLIA_SEARCH_KEY: string = process.env.ALGOLIA_SEARCH_KEY ?? ""
 
-export const STRIPE_PUBLIC_KEY: string =
-    process.env.STRIPE_PUBLIC_KEY ?? ""
-export const DONATE_API_URL: string =
-    process.env.DONATE_API_URL ?? ""
+export const STRIPE_PUBLIC_KEY: string = process.env.STRIPE_PUBLIC_KEY ?? ""
+export const DONATE_API_URL: string = process.env.DONATE_API_URL ?? ""
 
-export const RECAPTCHA_SITE_KEY: string =
-    process.env.RECAPTCHA_SITE_KEY ?? "6"
+export const RECAPTCHA_SITE_KEY: string = process.env.RECAPTCHA_SITE_KEY ?? "6"

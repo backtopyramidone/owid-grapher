@@ -12,7 +12,6 @@ As soon as the Gitpod workspace is launched, it will begin installing all of the
 
 No, not at the moment. Gitpod is designed for software development, and only stays online for as long as your workspace is open. However, it is possible to export a graph as an .svg file and embed it into a website with lossless quaity.
 
-
 [![Actions Status](https://github.com/owid/owid-grapher/workflows/Continuous%20Integration/badge.svg)](https://github.com/owid/owid-grapher/actions)
 [![Test coverage](https://owid.github.io/badges/coverage.svg)](https://owid.github.io/coverage/)
 [![Storybook](https://raw.githubusercontent.com/storybookjs/brand/master/badge/badge-storybook.svg)](https://owid.github.io/stories/)

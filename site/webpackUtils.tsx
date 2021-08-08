@@ -13,7 +13,7 @@ export const webpackUrl = (
     baseUrl = "",
     isProduction = ENV === "production"
 ) => {
-       return urljoin(WEBPACK_DEV_URL, assetName)
+    return urljoin(WEBPACK_DEV_URL, assetName)
 }
 
 export const bakeEmbedSnippet = (
